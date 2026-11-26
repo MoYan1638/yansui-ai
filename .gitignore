@@ -1,0 +1,11 @@
+# Gradle
+.gradle/
+build/
+
+# 本地数据：配置含密钥、记忆与运行数据，一律不上库
+data/
+
+# IDE
+.idea/
+*.iml
+.vscode/
