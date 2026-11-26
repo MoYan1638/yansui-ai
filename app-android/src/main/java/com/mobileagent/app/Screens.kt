@@ -800,6 +800,42 @@ fun SettingsScreen(engine: AgentEngine) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                SectionLabel("后台活跃")
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val pm = ctx.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+                val whitelisted = pm.isIgnoringBatteryOptimizations(ctx.packageName)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (whitelisted) "● 已在电池优化白名单" else "○ 未加入电池优化白名单",
+                        style = MonoStyle,
+                        fontSize = 11.sp,
+                        color = if (whitelisted) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    if (!whitelisted) {
+                        OutlinedButton(
+                            onClick = {
+                                runCatching {
+                                    ctx.startActivity(
+                                        android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                                            .setData(android.net.Uri.parse("package:${ctx.packageName}"))
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                }
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        ) { Text("申请白名单") }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "白名单可防止长任务被系统冻杀（主动消息/定时任务需要）。国产 ROM（MIUI/EMUI/ColorOS 等）还需在系统设置里单独开启：自启动、后台弹出界面、锁后台。",
+                    style = MaterialTheme.typography.bodySmall,
+                    lineHeight = 19.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 Spacer(Modifier.height(18.dp))
                 Text(
                     "engine core M1/M2 · ${engine.skills.size} skills · maxRounds ${engine.config?.maxRounds ?: 15}",
