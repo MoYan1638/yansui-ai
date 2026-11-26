@@ -61,7 +61,20 @@ icon = icon.resize((S, S), Image.LANCZOS)
 round_mask(icon).save(os.path.join(DESIGN, "icon_1024.png"))
 
 # 自适应两层：前景 = 白气泡（星挖空透明），背景 = 纯色
-fg_out = bubble_layer(star_scale=0.115).resize((S, S), Image.LANCZOS)
+# Android 会把 108dp 图层裁到中央约 66%（安全区），前景必须整体缩进安全区，
+# 否则桌面显示时气泡边缘和尾巴会被裁掉
+SAFE = 0.58  # 前景内容占画布的最大比例（留足裁切余量）
+fg_canvas = Image.new("RGBA", (SS, SS), (0, 0, 0, 0))
+bubble = bubble_layer(star_scale=0.115)
+bbox = bubble.getbbox()
+bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+k = min(SS * SAFE / bw, SS * SAFE / bh)
+bubble_small = bubble.resize((int(bw * k), int(bh * k)), Image.LANCZOS)
+fg_canvas.alpha_composite(
+    bubble_small,
+    ((SS - bubble_small.width) // 2, (SS - bubble_small.height) // 2),
+)
+fg_out = fg_canvas.resize((S, S), Image.LANCZOS)
 fg_out.save(os.path.join(DESIGN, "ic_launcher_fg_1024.png"))
 bg.resize((S, S), Image.LANCZOS).save(os.path.join(DESIGN, "ic_launcher_bg_1024.png"))
 

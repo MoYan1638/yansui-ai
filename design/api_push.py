@@ -49,21 +49,41 @@ if local_tree == base_tree_sha:
     print("远端已是最新，无需推送")
     sys.exit(0)
 
-# 差异文件（相对远端 head）
-status = git("diff", "--name-status", base_commit_sha, "HEAD")
+# 差异：对比远端树与本地 HEAD 树的 blob 哈希（不依赖本地存在远端 commit 对象）
+remote_files = {}
+
+
+def walk_tree(sha):
+    t = call("GET", f"/repos/{REPO}/git/trees/{sha}?recursive=1")
+    for item in t["tree"]:
+        if item["type"] == "blob":
+            remote_files[item["path"]] = item["sha"]
+    if t.get("truncated"):
+        raise SystemExit("远端树过大被截断，请手动处理")
+
+
+walk_tree(base_tree_sha)
+
+local_files = {}
+for line in git("ls-tree", "-r", "HEAD").splitlines():
+    meta, path = line.split("\t", 1)
+    mode, typ, sha = meta.split()
+    local_files[path] = sha
+
+changed = [p for p, s in local_files.items() if remote_files.get(p) != s]
+deleted = [p for p in remote_files if p not in local_files]
+print(f"changed {len(changed)}, deleted {len(deleted)}")
+
 entries = []
-for line in status.splitlines():
-    parts = line.split("\t")
-    st, path = parts[0], parts[-1]
-    if st.startswith("D"):
-        entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
-        continue
-    with open(path, "rb") as f:
-        content = f.read()
+for path in changed:
+    content = subprocess.check_output(["git", "cat-file", "blob", f"HEAD:{path}"])
     blob = call("POST", f"/repos/{REPO}/git/blobs",
                 {"content": base64.b64encode(content).decode(), "encoding": "base64"})
     entries.append({"path": path, "mode": "100644", "type": "blob", "sha": blob["sha"]})
     print("blob", path, blob["sha"][:8])
+for path in deleted:
+    entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
+    print("delete", path)
 
 tree = call("POST", f"/repos/{REPO}/git/trees",
             {"base_tree": base_tree_sha, "tree": entries})
