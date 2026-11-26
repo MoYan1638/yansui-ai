@@ -34,10 +34,12 @@ class AgentEngine(context: Context) {
     val root: Path = appContext.filesDir.toPath()
     private val skillsDir: Path = root.resolve("skills")
     private val configPath: Path = root.resolve("config.json")
+    private val keysPath: Path = root.resolve("keys.json")
     private val memoryDir: Path = root.resolve("data").resolve("memory")
 
     private val busy = AtomicBoolean(false)
     private val history = mutableListOf<JsonElement>() // 受 busy 标志保护，单任务串行
+    private val providerKeys = mutableMapOf<String, String>() // 厂商 → Key，切换模型复用
 
     var skills: List<Skill> = emptyList()
         private set
@@ -49,6 +51,14 @@ class AgentEngine(context: Context) {
         extractSkillsFromAssets()
         refreshSkills()
         config = ModelConfig.load(configPath)
+        loadKeys()
+        // 老配置（手填时代）把 Key 归档到厂商名下，切换模型时直接可用
+        config?.let {
+            if (providerKeys[providerKeyOf(it.baseUrl)].isNullOrBlank()) {
+                providerKeys[providerKeyOf(it.baseUrl)] = it.apiKey
+                saveKeys()
+            }
+        }
     }
 
     fun refreshSkills() {
@@ -113,6 +123,45 @@ class AgentEngine(context: Context) {
         )
         ModelConfig.save(configPath, cfg)
         config = cfg
+        providerKeys[providerKeyOf(url)] = cfg.apiKey
+        saveKeys()
+    }
+
+    /** 该厂商是否已存过 Key（模型选择弹窗判断要不要补填） */
+    fun keyFor(provider: String): String? = providerKeys[provider]
+
+    fun setProviderKey(provider: String, key: String) {
+        if (key.isBlank()) return
+        providerKeys[provider] = key.trim()
+        saveKeys()
+    }
+
+    /** 切到预设模型：有 Key 直接切，没 Key 由 UI 先收集（key 参数） */
+    fun switchModel(preset: ModelPreset, key: String? = null): Boolean {
+        val k = (key ?: providerKeys[preset.provider])?.trim()
+        if (k.isNullOrBlank()) return false
+        providerKeys[preset.provider] = k
+        saveKeys()
+        saveConfig(preset.baseUrl, k, preset.model, config?.maxRounds ?: 15)
+        return true
+    }
+
+    private fun loadKeys() {
+        providerKeys.clear()
+        if (!Files.exists(keysPath)) return
+        runCatching {
+            Json.parseToJsonElement(keysPath.readTextCompat()).jsonObject.forEach { (k, v) ->
+                providerKeys[k] = v.jsonPrimitive.content
+            }
+        }
+    }
+
+    private fun saveKeys() {
+        runCatching {
+            keysPath.writeTextCompat(
+                JsonObject(providerKeys.mapValues { JsonPrimitive(it.value) }).toString()
+            )
+        }
     }
 
     /** 新会话：清空上下文（长期记忆保留）；任务执行中返回 false */

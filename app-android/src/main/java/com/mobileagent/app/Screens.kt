@@ -23,8 +23,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -79,14 +79,14 @@ fun AppScaffold(engine: AgentEngine) {
             modifier = Modifier.weight(1f)
         ) { t ->
             when (t) {
-                0 -> ChatScreen(engine)
+                0 -> ChatScreen(engine, onOpenSettings = { tab = 2 })
                 1 -> SkillsScreen(engine)
                 else -> SettingsScreen(engine)
             }
         }
 
         NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-            val tabs = listOf("会话" to Icons.Filled.Home, "技能" to Icons.Filled.List, "设置" to Icons.Filled.Settings)
+            val tabs = listOf("会话" to Icons.Filled.Home, "技能" to Icons.AutoMirrored.Filled.List, "设置" to Icons.Filled.Settings)
             tabs.forEachIndexed { i, (label, icon) ->
                 NavigationBarItem(
                     selected = tab == i,

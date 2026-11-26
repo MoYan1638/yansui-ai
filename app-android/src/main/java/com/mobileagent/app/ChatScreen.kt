@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -72,10 +73,16 @@ private fun Bubble(text: String, isUser: Boolean) {
 }
 
 @Composable
-fun ChatScreen(engine: AgentEngine, modifier: Modifier = Modifier) {
+fun ChatScreen(
+    engine: AgentEngine,
+    modifier: Modifier = Modifier,
+    onOpenSettings: () -> Unit = {},
+) {
     val items = remember { mutableStateListOf<ChatItem>() }
     var input by remember { mutableStateOf("") }
     var running by remember { mutableStateOf(false) }
+    var showPicker by remember { mutableStateOf(false) }
+    var currentModel by remember { mutableStateOf(engine.config?.model) }
     val listState = rememberLazyListState()
 
     // 新条目自动滚到底部
@@ -119,11 +126,28 @@ fun ChatScreen(engine: AgentEngine, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onBackground
             )
             Box(Modifier.weight(1f))
-            Text(
-                engine.config?.model ?: "未配置",
-                style = MonoStyle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // 模型快捷切换：点开弹层选模型，无需进设置页
+            Surface(
+                onClick = { showPicker = true },
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("⚡", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                    Box(Modifier.width(5.dp))
+                    Text(
+                        ModelPresets.displayName(currentModel),
+                        style = MonoStyle,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Box(Modifier.width(5.dp))
+                    Text("⌄", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
 
         // 消息区
@@ -216,5 +240,15 @@ fun ChatScreen(engine: AgentEngine, modifier: Modifier = Modifier) {
                 )
             }
         }
+    }
+
+    if (showPicker) {
+        ModelPickerSheet(
+            engine = engine,
+            currentModel = currentModel,
+            onDismiss = { showPicker = false },
+            onSwitched = { currentModel = engine.config?.model },
+            onOpenSettings = onOpenSettings
+        )
     }
 }
