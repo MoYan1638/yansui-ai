@@ -10,7 +10,7 @@ DESIGN = os.path.dirname(os.path.abspath(__file__))
 INK = (24, 25, 36)
 
 
-def star_pts(cx, cy, a, c=0.19, rot=0.0):
+def star_pts(cx, cy, a, c=0.24, rot=0.0):
     pts = []
     for k in range(4):
         ang_tip = math.radians(rot + 90 * k)
@@ -24,13 +24,14 @@ def star_pts(cx, cy, a, c=0.19, rot=0.0):
     return pts
 
 
-def bubble_layer(star_scale=0.115):
+def bubble_layer(star_scale=0.118):
     """白色气泡，中央星形挖空为透明（自适应前景用）；star_scale=0 时为实心白"""
     fg = Image.new("RGBA", (SS, SS), (0, 0, 0, 0))
     d = ImageDraw.Draw(fg)
-    L, T, R, B = SS * 0.175, SS * 0.235, SS * 0.825, SS * 0.655
-    d.rounded_rectangle([L, T, R, B], radius=SS * 0.165, fill=(255, 255, 255, 255))
-    d.polygon([(SS * 0.335, SS * 0.615), (SS * 0.345, SS * 0.725), (SS * 0.465, SS * 0.635)],
+    # 气泡做得更方正：高宽比接近 1，避免在方框里显得扁
+    L, T, R, B = SS * 0.200, SS * 0.205, SS * 0.800, SS * 0.695
+    d.rounded_rectangle([L, T, R, B], radius=SS * 0.180, fill=(255, 255, 255, 255))
+    d.polygon([(SS * 0.330, SS * 0.680), (SS * 0.352, SS * 0.788), (SS * 0.492, SS * 0.686)],
               fill=(255, 255, 255, 255))
     if star_scale > 0:
         cx, cy = SS / 2, (T + B) / 2 + SS * 0.004
@@ -56,16 +57,16 @@ bg = Image.new("RGBA", (SS, SS), INK + (255,))
 
 # 整图（圆角预览图）
 icon = bg.copy()
-icon.alpha_composite(bubble_layer(star_scale=0.115))
+icon.alpha_composite(bubble_layer(star_scale=0.118))
 icon = icon.resize((S, S), Image.LANCZOS)
 round_mask(icon).save(os.path.join(DESIGN, "icon_1024.png"))
 
 # 自适应两层：前景 = 白气泡（星挖空透明），背景 = 纯色
 # Android 会把 108dp 图层裁到中央约 66%（安全区），前景必须整体缩进安全区，
 # 否则桌面显示时气泡边缘和尾巴会被裁掉
-SAFE = 0.58  # 前景内容占画布的最大比例（留足裁切余量）
+SAFE = 0.62  # 前景内容占画布的最大比例（留足裁切余量）
 fg_canvas = Image.new("RGBA", (SS, SS), (0, 0, 0, 0))
-bubble = bubble_layer(star_scale=0.115)
+bubble = bubble_layer(star_scale=0.118)
 bbox = bubble.getbbox()
 bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
 k = min(SS * SAFE / bw, SS * SAFE / bh)
@@ -82,7 +83,7 @@ bg.resize((S, S), Image.LANCZOS).save(os.path.join(DESIGN, "ic_launcher_bg_1024.
 for px in (48, 96, 144, 192):
     icon.resize((px, px), Image.LANCZOS).save(os.path.join(DESIGN, f"preview_{px}.png"))
 circle = bg.copy()
-circle.alpha_composite(bubble_layer(star_scale=0.115))
+circle.alpha_composite(bubble_layer(star_scale=0.118))
 circle = circle.resize((S, S), Image.LANCZOS)
 round_mask(circle, circle=True).resize((256, 256), Image.LANCZOS).save(
     os.path.join(DESIGN, "preview_adaptive_circle.png"))
