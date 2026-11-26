@@ -114,9 +114,9 @@ object ModelPresets {
             desc = "一个 Key 聚合多款开源模型", window = "64K"
         ),
         ModelPreset(
-            provider = "local", name = "本地 Ollama",
+            provider = "local", name = "本地模型（无电脑可选）",
             baseUrl = "http://127.0.0.1:11434/v1", model = "qwen3:8b",
-            desc = "电脑 Ollama 直连，无需 Key（局域网地址在设置页改）", window = "—",
+            desc = "电脑 Ollama 或手机 Termux+llama.cpp，地址在设置页改", window = "—",
             badges = listOf("离线")
         ),
     )

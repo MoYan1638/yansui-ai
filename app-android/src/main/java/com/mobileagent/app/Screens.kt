@@ -82,6 +82,34 @@ import kotlinx.serialization.json.jsonPrimitive
 private val AppEasing = CubicBezierEasing(0.22f, 0.8f, 0.3f, 1f)
 private val WarnRed = Color(0xFFE05A5A)
 
+/** 本地模型发现 · OpenAI 兼容端点（llama.cpp llama-server / LM Studio / 新版 Ollama）：GET {base}/models */
+private fun fetchOpenAiModels(base: String): List<String> {
+    val conn = java.net.URI("$base/models").toURL().openConnection() as java.net.HttpURLConnection
+    try {
+        conn.connectTimeout = 5000
+        conn.readTimeout = 8000
+        val body = conn.inputStream.readBytes().toString(Charsets.UTF_8)
+        return Json.parseToJsonElement(body).jsonObject["data"]?.jsonArray
+            ?.mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.contentOrNull } ?: emptyList()
+    } finally {
+        conn.disconnect()
+    }
+}
+
+/** 本地模型发现 · Ollama 原生端点：GET {base}/api/tags */
+private fun fetchOllamaTags(base: String): List<String> {
+    val conn = java.net.URI("$base/api/tags").toURL().openConnection() as java.net.HttpURLConnection
+    try {
+        conn.connectTimeout = 5000
+        conn.readTimeout = 8000
+        val body = conn.inputStream.readBytes().toString(Charsets.UTF_8)
+        return Json.parseToJsonElement(body).jsonObject["models"]?.jsonArray
+            ?.mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.contentOrNull } ?: emptyList()
+    } finally {
+        conn.disconnect()
+    }
+}
+
 // ---------- 通用小组件（原型样式还原） ----------
 
 @Composable
@@ -267,14 +295,14 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                     Text("STEP 2/3 · 配置", style = MonoStyle, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        if (useLocal) "连接本地 Ollama" else "填入接入信息",
+                        if (useLocal) "连接本地模型" else "填入接入信息",
                         style = MaterialTheme.typography.headlineSmall,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
                         if (useLocal)
-                            "手机不跑模型：在电脑上安装 Ollama 并设 OLLAMA_HOST=0.0.0.0 放行局域网，模型在电脑上 ollama pull 或自行导入，这里自动发现已装的，无需任何 API Key。"
+                            "两种跑法，都不需要 API Key：\n① 有电脑：装 Ollama，设 OLLAMA_HOST=0.0.0.0，填电脑局域网地址（例 192.168.1.5:11434/v1）；\n② 没电脑：手机装 Termux，在里面装 llama.cpp 并启动 llama-server（例 127.0.0.1:8080/v1）。手机只能跑 1.5B～4B 量化小模型，速度和续航有限。\n模型在对应平台拉取/导入，这里自动发现已装的。"
                         else
                             "密钥只保存在应用私有目录，不上传、不进任何云端。",
                         style = MaterialTheme.typography.bodySmall,
@@ -286,34 +314,31 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                         if (!useLocal) model = if (it.contains("11434")) "qwen3:8b" else "deepseek-chat"
                         testResult = null
                     }, singleLine = true,
-                        hint = if (useLocal) "电脑局域网地址，例 http://192.168.1.5:11434/v1" else null)
+                        hint = if (useLocal) "电脑：192.168.x.x:11434/v1 · 手机：127.0.0.1:8080/v1" else null)
                     Spacer(Modifier.height(10.dp))
 
                     if (useLocal) {
-                        // 已装模型发现：GET {base}/api/tags（Ollama 原生接口）
+                        // 已装模型发现：先试 OpenAI 兼容 /v1/models（llama.cpp / LM Studio / 新版 Ollama），失败回退 Ollama 原生 /api/tags
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             OutlinedButton(
                                 onClick = {
                                     fetchTip = "获取中…"
                                     val base = baseUrl.trim().trimEnd('/')
                                     Thread {
-                                        try {
-                                            val conn = java.net.URI("$base/api/tags").toURL()
-                                                .openConnection() as java.net.HttpURLConnection
-                                            conn.connectTimeout = 5000
-                                            conn.readTimeout = 8000
-                                            val body = conn.inputStream.readBytes().toString(Charsets.UTF_8)
-                                            conn.disconnect()
-                                            val names = Json.parseToJsonElement(body)
-                                                .jsonObject["models"]?.jsonArray
-                                                ?.mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.contentOrNull }
-                                                ?: emptyList()
-                                            installedModels = names
-                                            fetchTip = if (names.isEmpty()) "未发现已装模型（先在电脑上 ollama pull）"
-                                            else "发现 ${names.size} 个已装模型，点选一个"
+                                        val names: List<String> = try {
+                                            fetchOpenAiModels(base)
                                         } catch (e: Exception) {
-                                            fetchTip = "连接失败：${e.message?.take(80)}（检查电脑 IP / Ollama 是否放行局域网）"
+                                            try {
+                                                fetchOllamaTags(base)
+                                            } catch (e2: Exception) {
+                                                installedModels = emptyList()
+                                                fetchTip = "连接失败：${e.message?.take(80)}（检查地址 / 服务是否在跑）"
+                                                return@Thread
+                                            }
                                         }
+                                        installedModels = names
+                                        fetchTip = if (names.isEmpty()) "未发现已装模型（先拉取 / 导入模型）"
+                                        else "发现 ${names.size} 个已装模型，点选一个"
                                     }.start()
                                 },
                                 enabled = baseUrl.isNotBlank(),
@@ -321,7 +346,7 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                             ) { Text("获取已装模型") }
                             Spacer(Modifier.width(12.dp))
                             Text(
-                                "无 Key，直连电脑上的 Ollama",
+                                "无 Key，直连本地服务",
                                 style = MonoStyle, fontSize = 10.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -827,7 +852,7 @@ fun SettingsScreen(engine: AgentEngine) {
                     ) { localMode = false }
                     AccessOption(
                         sel = localMode, name = "本地部署", tag = "进阶", tagDim = true,
-                        desc = "Ollama / LM Studio，数据不出设备"
+                        desc = "电脑 Ollama / 手机 Termux + llama.cpp，无 Key"
                     ) {
                         localMode = true
                         baseUrl = ""
@@ -877,11 +902,29 @@ fun SettingsScreen(engine: AgentEngine) {
                 ) {
                     Column(Modifier.padding(14.dp)) {
                         Field("BASE URL", baseUrl, { baseUrl = it; savedTip = false }, singleLine = true,
-                            hint = if (localMode) "电脑局域网地址，例 http://192.168.1.5:11434/v1" else null)
+                            hint = if (localMode) "电脑：192.168.x.x:11434/v1 · 手机：127.0.0.1:8080/v1" else null)
                         Spacer(Modifier.height(10.dp))
                         Field("MODEL", model, { model = it; savedTip = false }, singleLine = true,
-                            hint = if (localMode) "ollama 里的模型名（可先在电脑上 pull / 导入）"
+                            hint = if (localMode) "可手填，或用下方按钮发现已装模型"
                             else "按模型家族自动匹配提示词模板（deepseek / minimax / openai）")
+                        if (localMode) {
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    val base = baseUrl.trim().trimEnd('/')
+                                    Thread {
+                                        val names: List<String> = try {
+                                            fetchOpenAiModels(base)
+                                        } catch (e: Exception) {
+                                            try { fetchOllamaTags(base) } catch (e2: Exception) { emptyList() }
+                                        }
+                                        if (names.isNotEmpty()) model = names.first()
+                                    }.start()
+                                },
+                                enabled = baseUrl.isNotBlank(),
+                                shape = RoundedCornerShape(8.dp)
+                            ) { Text("发现已装模型（取第一个）") }
+                        }
                         if (!localMode) {
                             Spacer(Modifier.height(10.dp))
                             Field("API KEY", apiKey, { apiKey = it; savedTip = false }, singleLine = true,
