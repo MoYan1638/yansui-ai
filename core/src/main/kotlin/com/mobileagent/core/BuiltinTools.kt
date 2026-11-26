@@ -33,6 +33,7 @@ class BuiltinTools(
         object : Tool {
             override val name = "read_file"
             override val description = "读取工作区内一个文本文件的内容"
+            override val usage = "path 只能是工作区内相对路径，不要拼绝对路径；读之前不确定文件是否存在可先用 list_dir 查看"
             override val parameters = """{"type":"object","properties":{"path":{"type":"string","description":"工作区内相对路径"}},"required":["path"]}"""
             override fun execute(args: JsonObject): String {
                 val p = resolveInRoot(args["path"]!!.jsonPrimitive.content)
@@ -43,6 +44,7 @@ class BuiltinTools(
         object : Tool {
             override val name = "write_file"
             override val description = "写入（或创建）工作区内一个文本文件，覆盖式写入"
+            override val usage = "覆盖式写入：修改文件前必须先 read_file 原文，在原文基础上改，不要凭记忆重写整个文件"
             override val parameters = """{"type":"object","properties":{"path":{"type":"string","description":"工作区内相对路径"},"content":{"type":"string","description":"完整文件内容"}},"required":["path","content"]}"""
             override fun execute(args: JsonObject): String {
                 val p = resolveInRoot(args["path"]!!.jsonPrimitive.content, forWrite = true)
@@ -54,6 +56,7 @@ class BuiltinTools(
         object : Tool {
             override val name = "list_dir"
             override val description = "列出工作区内某目录的文件与子目录"
+            override val usage = "path 不传默认列根目录；只列一层，看子目录内容需再次调用"
             override val parameters = """{"type":"object","properties":{"path":{"type":"string","description":"工作区内相对路径，默认为根目录"}}}"""
             override fun execute(args: JsonObject): String {
                 val rel = args["path"]?.jsonPrimitive?.contentOrNull ?: "."
@@ -69,6 +72,7 @@ class BuiltinTools(
         object : Tool {
             override val name = "http_request"
             override val description = "发起 HTTP GET/POST 请求（用于调外部 API）"
+            override val usage = "仅支持 https；POST 的 body 必须是合法 JSON 字符串；返回体超过 2000 字符会被截断，需要更多分页拉取"
             override val parameters = """{"type":"object","properties":{"url":{"type":"string","description":"完整 URL，必须 https"},"method":{"type":"string","enum":["GET","POST"]},"body":{"type":"string","description":"POST 时的请求体"}},"required":["url"]}"""
             override fun execute(args: JsonObject): String {
                 val url = args["url"]!!.jsonPrimitive.content
@@ -102,6 +106,7 @@ class BuiltinTools(
         object : Tool {
             override val name = "memory_read"
             override val description = "读取长期记忆（跨会话保存的用户信息与项目要点）"
+            override val usage = "无需参数，直接调用；任务涉及用户个人偏好/历史约定时先读一次再行动"
             override val parameters = """{"type":"object","properties":{}}"""
             override fun execute(args: JsonObject): String {
                 if (!Files.exists(memoryFile)) return "（记忆为空）"
@@ -111,6 +116,7 @@ class BuiltinTools(
         object : Tool {
             override val name = "memory_write"
             override val description = "写入长期记忆。append 追加一行；replace 整体替换（谨慎）"
+            override val usage = "默认用 append 追加一条，不要轻易 replace（会抹掉全部记忆）；每次只记一条简洁事实，不要长篇大论"
             override val parameters = """{"type":"object","properties":{"mode":{"type":"string","enum":["append","replace"]},"content":{"type":"string"}},"required":["mode","content"]}"""
             override fun execute(args: JsonObject): String {
                 val content = args["content"]!!.jsonPrimitive.content
@@ -125,6 +131,7 @@ class BuiltinTools(
         object : Tool {
             override val name = "run_command"
             override val description = "在工作区内执行一条命令行命令（敏感操作，会先请求用户确认）"
+            override val usage = "移动端不可用（调用会被拒绝）；如任务需要命令行，直接向用户说明限制，不要反复重试"
             override val parameters = """{"type":"object","properties":{"command":{"type":"string","description":"要执行的命令"}},"required":["command"]}"""
             override fun execute(args: JsonObject): String {
                 val cmd = args["command"]!!.jsonPrimitive.content

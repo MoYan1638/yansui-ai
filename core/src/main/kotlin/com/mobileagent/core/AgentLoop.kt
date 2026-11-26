@@ -43,6 +43,12 @@ class AgentLoop(
                 append(body).append("\n")
             }
         }
+        // 自研「工具使用要点」：把实测经验/约束注入提示词，降低小模型传参错误率
+        val usageLines = tools.filter { it.usage.isNotBlank() }.joinToString("\n") { "- ${it.name}：${it.usage}" }
+        if (usageLines.isNotBlank()) {
+            append("\n## 工具使用要点（务必遵守）\n")
+            append(usageLines).append("\n")
+        }
     }
 
     /** 本轮任务元信息（UI meta 行用）：轮数与 token 累计 */
@@ -116,9 +122,12 @@ class AgentLoop(
         }
         tool.execute(args)
     } catch (e: ToolException) {
-        "工具执行失败：${e.message}"
+        // 失败观察附带行动指引：防模型拿垃圾结果继续编（自研定制，非外部方案照搬）
+        "工具执行失败：${e.message}\n" +
+        "（该结果不可用：请修正参数重试一次；若仍失败，换一种方法完成，或向用户如实说明卡在哪）"
     } catch (e: Exception) {
-        "工具执行异常：${e.javaClass.simpleName}: ${e.message}"
+        "工具执行异常：${e.javaClass.simpleName}: ${e.message}\n" +
+        "（该结果不可用：不要基于此继续推理，换方法或向用户说明）"
     }
 
     /** 兜底三：上下文压缩。超阈值时把早期消息内容替换为占位符，最近 KEEP_RECENT 条不动 */
