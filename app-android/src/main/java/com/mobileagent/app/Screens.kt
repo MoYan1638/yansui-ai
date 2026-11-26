@@ -467,6 +467,40 @@ private fun OnboardingApiGuide() {
             ApiProviderCard(g)
             Spacer(Modifier.height(8.dp))
         }
+        CustomApiCard()
+    }
+}
+
+/** 自定义 API 卡片：已有的任意 OpenAI 兼容接口都能接，不局限于内置名单 */
+@Composable
+private fun CustomApiCard() {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("自定义 API", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.width(8.dp))
+                TagChip("已有 Key 就用这个")
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "已有任意兼容 OpenAI 协议的接口都能接——包括上面没列到的平台、聚合中转站、公司内网网关。",
+                style = MaterialTheme.typography.bodySmall,
+                lineHeight = 19.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "下一步直接填：BASE URL（如 https://你的域名/v1）+ MODEL + API KEY；接口需支持 /chat/completions。之后也能在会话页「配置自定义模型」或设置页随时改。",
+                style = MaterialTheme.typography.bodySmall,
+                lineHeight = 19.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -1086,6 +1120,7 @@ fun SettingsScreen(engine: AgentEngine) {
             text = {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     apiGuides.forEach { g -> item { ApiProviderCard(g) } }
+                    item { CustomApiCard() }
                 }
             },
             confirmButton = { TextButton(onClick = { showGuide = false }) { Text("关闭") } }
