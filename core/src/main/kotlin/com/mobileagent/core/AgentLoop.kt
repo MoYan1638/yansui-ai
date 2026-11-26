@@ -14,7 +14,8 @@ class AgentLoop(
     private val config: ModelConfig,
     private val tools: List<Tool>,
     private val skills: List<Skill> = emptyList(),
-    private val onToolCall: (name: String, args: String, result: String) -> Unit = { _, _, _ -> }
+    private val onToolCall: (name: String, args: String, result: String) -> Unit = { _, _, _ -> },
+    private val onToolStart: (name: String, args: String) -> Unit = { _, _ -> } // UI 显示“执行中”卡片
 ) {
 
     companion object {
@@ -44,6 +45,14 @@ class AgentLoop(
         }
     }
 
+    /** 本轮任务元信息（UI meta 行用）：轮数与 token 累计 */
+    var lastRounds: Int = 0
+        private set
+    var lastTokensIn: Int = 0
+        private set
+    var lastTokensOut: Int = 0
+        private set
+
     /** 单次任务：把用户输入加入历史并循环到模型给出最终回答 */
     fun run(userInput: String, history: MutableList<JsonElement>): String {
         history.add(msg("user", userInput))
@@ -54,7 +63,13 @@ class AgentLoop(
             val resp = try {
                 client.chat(listOf(msg("system", systemPrompt)) + history, tools)
             } catch (e: ModelException) {
+                lastRounds = rounds
                 return "模型调用失败：${e.message}"
+            }
+            // usage 统计（各家 OpenAI 兼容端点均有，缺失则跳过）
+            (resp["usage"] as? JsonObject)?.let { u ->
+                lastTokensIn += u["prompt_tokens"]?.jsonPrimitive?.intOrNull ?: 0
+                lastTokensOut += u["completion_tokens"]?.jsonPrimitive?.intOrNull ?: 0
             }
             val message = resp["choices"]!!.jsonArray[0].jsonObject["message"]!!.jsonObject
             val toolCalls = message["tool_calls"]
@@ -62,6 +77,7 @@ class AgentLoop(
             if (toolCalls == null || toolCalls.jsonArray.isEmpty()) {
                 val content = message["content"]?.jsonPrimitive?.contentOrNull ?: "（空回复）"
                 history.add(msg("assistant", content))
+                lastRounds = rounds
                 return content
             }
 
@@ -74,6 +90,7 @@ class AgentLoop(
                 val fn = c["function"]!!.jsonObject
                 val name = fn["name"]!!.jsonPrimitive.content
                 val argsRaw = fn["arguments"]?.jsonPrimitive?.contentOrNull ?: "{}"
+                onToolStart(name, argsRaw)
                 val result = executeTool(name, argsRaw)
                 onToolCall(name, argsRaw, result)
                 history.add(buildJsonObject {
@@ -83,6 +100,7 @@ class AgentLoop(
                 })
             }
         }
+        lastRounds = rounds
         return "已达到轮数上限（${config.maxRounds} 轮），强制停下以免失控。以上是当前进展——" +
                "你可以让我继续、调整方向，或提高轮数上限。"
     }

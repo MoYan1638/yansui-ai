@@ -52,10 +52,12 @@ fun main(args: Array<String>) {
         }}")
     }
 
-    val loop = AgentLoop(client, effective, tools.all, skills) { name, argsJson, result ->
-        println("  [工具] $name($argsJson)")
-        println("  [结果] ${result.replace("\n", "\n         ").take(300)}")
-    }
+    val loop = AgentLoop(client, effective, tools.all, skills,
+        onToolCall = { name, argsJson, result ->
+            println("  [工具] $name($argsJson)")
+            println("  [结果] ${result.replace("\n", "\n         ").take(300)}")
+        }
+    )
 
     val history = mutableListOf<kotlinx.serialization.json.JsonElement>()
 

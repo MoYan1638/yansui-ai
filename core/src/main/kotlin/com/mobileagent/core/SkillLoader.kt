@@ -16,7 +16,8 @@ data class Skill(
     val name: String,
     val description: String,
     val body: String,
-    val dir: Path
+    val dir: Path,
+    val category: String = "" // front-matter 可选字段，技能页分类标签
 )
 
 object SkillLoader {
@@ -44,9 +45,10 @@ object SkillLoader {
                 ?.groupValues?.get(1)?.trim()
         val name = field("name") ?: dir.fileName.toString()
         val description = field("description") ?: ""
+        val category = field("category") ?: ""
         val body = text.substring(fmMatch.value.length).trim()
         if (body.isBlank()) return null
-        return Skill(name, description, body, dir)
+        return Skill(name, description, body, dir, category)
     }
 
     /**

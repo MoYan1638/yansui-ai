@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Files
@@ -35,21 +36,24 @@ class AgentEngine(context: Context) {
     private val skillsDir: Path = root.resolve("skills")
     private val configPath: Path = root.resolve("config.json")
     private val keysPath: Path = root.resolve("keys.json")
+    private val skillStatePath: Path = root.resolve("data").resolve("skills-state.json")
     private val memoryDir: Path = root.resolve("data").resolve("memory")
 
     private val busy = AtomicBoolean(false)
     private val history = mutableListOf<JsonElement>() // 受 busy 标志保护，单任务串行
     private val providerKeys = mutableMapOf<String, String>() // 厂商 → Key，切换模型复用
+    private val disabledSkills = mutableSetOf<String>() // 技能页开关的关闭状态，持久化
 
     var skills: List<Skill> = emptyList()
         private set
     var config: ModelConfig? = null
         private set
 
-    /** 启动初始化：提取技能 → 解析 → 过闸门 → 读配置。主线程调用一次 */
+    /** 启动初始化：提取技能 → 解析 → 过闸门 → 读配置与状态。主线程调用一次 */
     fun initialize() {
         extractSkillsFromAssets()
         refreshSkills()
+        loadSkillState()
         config = ModelConfig.load(configPath)
         loadKeys()
         // 老配置（手填时代）把 Key 归档到厂商名下，切换模型时直接可用
@@ -68,14 +72,16 @@ class AgentEngine(context: Context) {
     /** 单轮任务，阻塞执行（调用方放 IO 线程）；事件经回调吐给 UI */
     fun send(
         input: String,
-        onToolCall: (name: String, summary: String) -> Unit,
-        onDone: (String) -> Unit,
+        onToolStart: (name: String, args: String) -> Unit,
+        onToolCall: (name: String, args: String, result: String) -> Unit,
+        onDone: (reply: String, rounds: Int, tokensIn: Int, tokensOut: Int) -> Unit,
         onFailed: (String) -> Unit,
     ) {
         val cfg = config
         if (cfg == null) { onFailed("尚未连接模型，点右上角 ⚡ 选一个"); return }
         if (!busy.compareAndSet(false, true)) { onFailed("当前有任务正在执行"); return }
         try {
+            val active = skills.filter { it.name !in disabledSkills } // 关闭的技能不注入
             val tools = BuiltinTools(
                 workspaceRoot = root,
                 memoryDir = memoryDir,
@@ -85,23 +91,17 @@ class AgentEngine(context: Context) {
                 client = ModelClient(cfg),
                 config = cfg,
                 tools = tools.all,
-                skills = skills,
-                onToolCall = { name, args, result ->
-                    onToolCall(name, summarize(name, args, result))
-                }
+                skills = active,
+                onToolCall = { name, args, result -> onToolCall(name, args, result) },
+                onToolStart = { name, args -> onToolStart(name, args) }
             )
-            onDone(loop.run(input, history))
+            val reply = loop.run(input, history)
+            onDone(reply, loop.lastRounds, loop.lastTokensIn, loop.lastTokensOut)
         } catch (e: Exception) {
             onFailed(e.message ?: e.javaClass.simpleName)
         } finally {
             busy.set(false)
         }
-    }
-
-    private fun summarize(name: String, args: String, result: String): String {
-        val ok = !result.startsWith("工具执行失败") && !result.startsWith("工具执行异常")
-        val tail = if (ok) result.lineSequence().firstOrNull()?.take(48) ?: "" else "失败"
-        return "$name(${args.take(40)}) → $tail"
     }
 
     /** 保存模型配置；family 按 baseUrl 自动推断 */
@@ -164,11 +164,39 @@ class AgentEngine(context: Context) {
         }
     }
 
+    private fun loadSkillState() {
+        disabledSkills.clear()
+        if (!Files.exists(skillStatePath)) return
+        runCatching {
+            Json.parseToJsonElement(skillStatePath.readTextCompat()).jsonObject.forEach { (k, v) ->
+                if (v.jsonPrimitive.booleanOrNull == false) disabledSkills.add(k)
+            }
+        }
+    }
+
+    private fun saveSkillState() {
+        runCatching {
+            skillStatePath.parent?.createDirectories()
+            skillStatePath.writeTextCompat(
+                JsonObject(skills.associate { it.name to JsonPrimitive(it.name !in disabledSkills) }).toString()
+            )
+        }
+    }
+
     /** 新会话：清空上下文（长期记忆保留）；任务执行中返回 false */
     fun newSession(): Boolean {
         if (busy.get()) return false
         history.clear()
         return true
+    }
+
+    // ---- 技能开关（技能页 Switch；关闭的技能不注入提示词） ----
+
+    fun isSkillEnabled(name: String): Boolean = name !in disabledSkills
+
+    fun setSkillEnabled(name: String, enabled: Boolean) {
+        if (enabled) disabledSkills.remove(name) else disabledSkills.add(name)
+        saveSkillState()
     }
 
     /** 清空长期记忆文件；任务执行中返回 false */
