@@ -10,10 +10,12 @@ import com.mobileagent.core.SkillLoader
 import com.mobileagent.core.readTextCompat
 import com.mobileagent.core.writeTextCompat
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Files
@@ -37,6 +39,7 @@ class AgentEngine(context: Context) {
     private val configPath: Path = root.resolve("config.json")
     private val keysPath: Path = root.resolve("keys.json")
     private val skillStatePath: Path = root.resolve("data").resolve("skills-state.json")
+    private val historyPath: Path = root.resolve("data").resolve("history.json")
     private val memoryDir: Path = root.resolve("data").resolve("memory")
 
     private val busy = AtomicBoolean(false)
@@ -49,11 +52,12 @@ class AgentEngine(context: Context) {
     var config: ModelConfig? = null
         private set
 
-    /** 启动初始化：提取技能 → 解析 → 过闸门 → 读配置与状态。主线程调用一次 */
+    /** 启动初始化：提取技能 → 解析 → 过闸门 → 恢复会话检查点 → 读配置与状态。主线程调用一次 */
     fun initialize() {
         extractSkillsFromAssets()
         refreshSkills()
         loadSkillState()
+        loadHistory() // 手机端系统随时杀后台，会话从检查点恢复（借鉴 Octop 的 restart-safe，自研 JSON 实现）
         config = ModelConfig.load(configPath)
         loadKeys()
         // 老配置（手填时代）把 Key 归档到厂商名下，切换模型时直接可用
@@ -104,6 +108,7 @@ class AgentEngine(context: Context) {
             onFailed("${e.javaClass.simpleName}: ${e.message ?: ""}")
         } finally {
             busy.set(false)
+            saveHistory() // 每轮任务后落盘检查点（后台线程，文件小）
         }
     }
 
@@ -149,6 +154,24 @@ class AgentEngine(context: Context) {
         return true
     }
 
+    // ---- 会话检查点（自研：OpenAI 消息数组整体 JSON 落盘，启动时恢复） ----
+
+    private fun loadHistory() {
+        if (!Files.exists(historyPath)) return
+        runCatching {
+            val arr = Json.parseToJsonElement(historyPath.readTextCompat()).jsonArray
+            history.clear()
+            history.addAll(arr)
+        }
+    }
+
+    private fun saveHistory() {
+        runCatching {
+            historyPath.parent?.createDirectories()
+            historyPath.writeTextCompat(JsonArray(history).toString())
+        }
+    }
+
     private fun loadKeys() {
         providerKeys.clear()
         if (!Files.exists(keysPath)) return
@@ -190,6 +213,7 @@ class AgentEngine(context: Context) {
     fun newSession(): Boolean {
         if (busy.get()) return false
         history.clear()
+        runCatching { Files.deleteIfExists(historyPath) } // 检查点同步清空
         return true
     }
 
