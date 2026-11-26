@@ -12,3 +12,5 @@ data/
 
 # 本机 SDK 路径
 local.properties
+# 构建产物走 Release 附件，不入库
+*.apk
