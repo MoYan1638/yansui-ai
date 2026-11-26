@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - 技能包随 APK 打包（assets/skills/），首次启动提取到 filesDir，之后每次启动覆盖刷新
  *   （用户数据在 data/ 下，不在 skills/ 下，覆盖安全）
  * - 文件/记忆工具沙箱 = 应用私有目录；run_command 在移动端一律拒绝（无 cmd.exe，也绝不该有）
- * - 会话历史保存在内存（应用生命周期内连续对话），新会话入口在设置页
+ * - 会话检查点落盘 data/history.json，重启后恢复（模型上下文与界面气泡流同步重建）
  */
 class AgentEngine(context: Context) {
 
@@ -193,6 +193,25 @@ class AgentEngine(context: Context) {
             historyPath.writeTextCompat(JsonArray(history).toString())
         }
     }
+
+    /**
+     * 从检查点恢复界面可显示的对话（user/assistant 文本消息，按顺序）。
+     * 供 ChatScreen 首次组合时重建气泡流——模型上下文和界面显示保持一致。
+     */
+    fun restoredChat(): List<Pair<String, String>> = runCatching {
+        if (!Files.exists(historyPath)) return emptyList()
+        Json.parseToJsonElement(historyPath.readTextCompat()).jsonArray.mapNotNull { el ->
+            val obj = el as? JsonObject ?: return@mapNotNull null
+            val role = obj["role"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            if (role != "user" && role != "assistant") return@mapNotNull null
+            val content = (obj["content"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                ?: (obj["content"] as? JsonArray)?.joinToString("\n") { part ->
+                    (part as? JsonObject)?.get("text")?.jsonPrimitive?.content ?: ""
+                } ?: return@mapNotNull null
+            if (content.isBlank()) return@mapNotNull null
+            role to content
+        }
+    }.getOrDefault(emptyList())
 
     private fun loadKeys() {
         providerKeys.clear()

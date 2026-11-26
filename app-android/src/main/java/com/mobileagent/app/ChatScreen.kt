@@ -204,6 +204,16 @@ fun ChatScreen(
     onOpenSettings: () -> Unit = {},
 ) {
     val items = remember { mutableStateListOf<ChatItem>() }
+
+    // 从检查点恢复上次对话（手机系统杀后台/退出重开后，界面与模型上下文同步重建）
+    LaunchedEffect(engine) {
+        if (items.isEmpty()) {
+            engine.restoredChat().forEach { (role, content) ->
+                items += if (role == "user") ChatItem.User(content) else ChatItem.Agent(content)
+            }
+        }
+    }
+
     var input by remember { mutableStateOf("") }
     var running by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
