@@ -32,6 +32,8 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -68,8 +70,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mobileagent.core.Skill
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** 方案动效规范的标准缓动曲线 */
 private val AppEasing = CubicBezierEasing(0.22f, 0.8f, 0.3f, 1f)
@@ -200,6 +207,8 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
     var apiKey by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var testResult by remember { mutableStateOf<String?>(null) }
+    var installedModels by remember { mutableStateOf<List<String>>(emptyList()) } // Ollama /api/tags 发现的已装模型
+    var fetchTip by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -246,28 +255,120 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
         ) { s ->
             when (s) {
                 1 -> OnboardingCover()
-                2 -> OnboardingAccess(useLocal) { useLocal = it; error = null }
+                2 -> OnboardingAccess(useLocal) { local ->
+                    useLocal = local
+                    error = null
+                    // 本地部署：无 Key，走电脑局域网地址，模型由发现/手填给出
+                    baseUrl = if (local) "" else "https://api.deepseek.com/v1"
+                    model = if (local) "" else "deepseek-chat"
+                    installedModels = emptyList(); fetchTip = null; testResult = null
+                }
                 3 -> Column {
                     Text("STEP 2/3 · 配置", style = MonoStyle, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(8.dp))
-                    Text("填入接入信息", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
+                    Text(
+                        if (useLocal) "连接本地 Ollama" else "填入接入信息",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "密钥只保存在应用私有目录，不上传、不进任何云端。",
+                        if (useLocal)
+                            "手机不跑模型：在电脑上安装 Ollama 并设 OLLAMA_HOST=0.0.0.0 放行局域网，模型在电脑上 ollama pull 或自行导入，这里自动发现已装的，无需任何 API Key。"
+                        else
+                            "密钥只保存在应用私有目录，不上传、不进任何云端。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(20.dp))
                     Field("BASE URL", baseUrl, {
                         baseUrl = it
-                        model = if (it.contains("11434")) "qwen3:8b" else "deepseek-chat"
+                        if (!useLocal) model = if (it.contains("11434")) "qwen3:8b" else "deepseek-chat"
                         testResult = null
-                    }, singleLine = true)
+                    }, singleLine = true,
+                        hint = if (useLocal) "电脑局域网地址，例 http://192.168.1.5:11434/v1" else null)
                     Spacer(Modifier.height(10.dp))
-                    Field("MODEL", model, { model = it; testResult = null }, singleLine = true)
-                    Spacer(Modifier.height(10.dp))
-                    Field("API KEY", apiKey, { apiKey = it; error = null; testResult = null }, singleLine = true,
-                        hint = if (useLocal) "本地 Ollama 通常不需要 Key，随便填个 ollama 即可" else "还没有？去对应平台控制台获取")
+
+                    if (useLocal) {
+                        // 已装模型发现：GET {base}/api/tags（Ollama 原生接口）
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(
+                                onClick = {
+                                    fetchTip = "获取中…"
+                                    val base = baseUrl.trim().trimEnd('/')
+                                    Thread {
+                                        try {
+                                            val conn = java.net.URI("$base/api/tags").toURL()
+                                                .openConnection() as java.net.HttpURLConnection
+                                            conn.connectTimeout = 5000
+                                            conn.readTimeout = 8000
+                                            val body = conn.inputStream.readBytes().toString(Charsets.UTF_8)
+                                            conn.disconnect()
+                                            val names = Json.parseToJsonElement(body)
+                                                .jsonObject["models"]?.jsonArray
+                                                ?.mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.contentOrNull }
+                                                ?: emptyList()
+                                            installedModels = names
+                                            fetchTip = if (names.isEmpty()) "未发现已装模型（先在电脑上 ollama pull）"
+                                            else "发现 ${names.size} 个已装模型，点选一个"
+                                        } catch (e: Exception) {
+                                            fetchTip = "连接失败：${e.message?.take(80)}（检查电脑 IP / Ollama 是否放行局域网）"
+                                        }
+                                    }.start()
+                                },
+                                enabled = baseUrl.isNotBlank(),
+                                shape = RoundedCornerShape(8.dp)
+                            ) { Text("获取已装模型") }
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "无 Key，直连电脑上的 Ollama",
+                                style = MonoStyle, fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        fetchTip?.let {
+                            Spacer(Modifier.height(6.dp))
+                            Text(it, style = MonoStyle, fontSize = 10.5.sp,
+                                color = if (it.startsWith("发现")) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (installedModels.isNotEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.horizontalScroll(rememberScrollState())
+                            ) {
+                                installedModels.forEach { name ->
+                                    val sel = name == model
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                                        else MaterialTheme.colorScheme.surface,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                                        ),
+                                        modifier = Modifier.clickable { model = name; testResult = null }
+                                    ) {
+                                        Text(
+                                            name, style = MonoStyle, fontSize = 11.sp,
+                                            color = if (sel) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Field("MODEL", model, { model = it; testResult = null }, singleLine = true,
+                            hint = "可手填（对应 ollama 里的模型名）")
+                    } else {
+                        Field("MODEL", model, { model = it; testResult = null }, singleLine = true)
+                        Spacer(Modifier.height(10.dp))
+                        Field("API KEY", apiKey, { apiKey = it; error = null; testResult = null }, singleLine = true,
+                            hint = "还没有？去对应平台控制台获取")
+                    }
                     testResult?.let {
                         Spacer(Modifier.height(8.dp))
                         Text(it, style = MonoStyle, fontSize = 11.sp,
@@ -282,7 +383,9 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                         onClick = {
                             testResult = "测试中…"
                                 val cfg = com.mobileagent.core.ModelConfig(
-                                    baseUrl = baseUrl.trim().trimEnd('/'), apiKey = apiKey, model = model,
+                                    baseUrl = baseUrl.trim().trimEnd('/'),
+                                    apiKey = apiKey.ifBlank { "ollama" }, // 本地 Ollama 无 Key，占位即可
+                                    model = model,
                                     family = "openai", maxRounds = 1, compressRatio = 0.7
                                 )
                                 Thread {
@@ -301,7 +404,7 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                                     testResult = r
                                 }.start()
                         },
-                        enabled = baseUrl.isNotBlank() && model.isNotBlank() && apiKey.isNotBlank(),
+                        enabled = baseUrl.isNotBlank() && model.isNotBlank() && (useLocal || apiKey.isNotBlank()),
                         shape = RoundedCornerShape(8.dp)
                     ) { Text("测试连接") }
                 }
@@ -324,12 +427,15 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                 onClick = {
                     when (step) {
                         3 -> {
-                            if (apiKey.isBlank() || baseUrl.isBlank() || model.isBlank()) {
-                                error = "三项都要填（Key 在各模型平台的控制台获取）"
+                            if (baseUrl.isBlank() || model.isBlank() || (!useLocal && apiKey.isBlank())) {
+                                error = if (useLocal)
+                                    "地址和模型名都要填（先在电脑上装好 Ollama 并拉取模型）"
+                                else
+                                    "三项都要填（Key 在各模型平台的控制台获取）"
                             } else step = 4
                         }
                         4 -> {
-                            engine.saveConfig(baseUrl, apiKey, model)
+                            engine.saveConfig(baseUrl, apiKey.ifBlank { "ollama" }, model)
                             onDone()
                         }
                         else -> step++
@@ -724,8 +830,8 @@ fun SettingsScreen(engine: AgentEngine) {
                         desc = "Ollama / LM Studio，数据不出设备"
                     ) {
                         localMode = true
-                        baseUrl = "http://127.0.0.1:11434/v1"
-                        model = "qwen3:8b"
+                        baseUrl = ""
+                        model = ""
                         savedTip = false
                     }
                 }
@@ -770,13 +876,24 @@ fun SettingsScreen(engine: AgentEngine) {
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(Modifier.padding(14.dp)) {
-                        Field("BASE URL", baseUrl, { baseUrl = it; savedTip = false }, singleLine = true)
+                        Field("BASE URL", baseUrl, { baseUrl = it; savedTip = false }, singleLine = true,
+                            hint = if (localMode) "电脑局域网地址，例 http://192.168.1.5:11434/v1" else null)
                         Spacer(Modifier.height(10.dp))
                         Field("MODEL", model, { model = it; savedTip = false }, singleLine = true,
-                            hint = "按模型家族自动匹配提示词模板（deepseek / minimax / openai）")
-                        Spacer(Modifier.height(10.dp))
-                        Field("API KEY", apiKey, { apiKey = it; savedTip = false }, singleLine = true,
-                            hint = "存储于应用私有目录，不明文上传")
+                            hint = if (localMode) "ollama 里的模型名（可先在电脑上 pull / 导入）"
+                            else "按模型家族自动匹配提示词模板（deepseek / minimax / openai）")
+                        if (!localMode) {
+                            Spacer(Modifier.height(10.dp))
+                            Field("API KEY", apiKey, { apiKey = it; savedTip = false }, singleLine = true,
+                                hint = "存储于应用私有目录，不明文上传")
+                        } else {
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "本地部署无需 API Key，模型经局域网直连",
+                                style = MonoStyle, fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
 
@@ -788,10 +905,10 @@ fun SettingsScreen(engine: AgentEngine) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Button(
                         onClick = {
-                            if (apiKey.isBlank() || baseUrl.isBlank() || model.isBlank()) {
-                                error = "三项都不能为空"
+                            if (baseUrl.isBlank() || model.isBlank() || (!localMode && apiKey.isBlank())) {
+                                error = if (localMode) "地址和模型名都要填" else "三项都不能为空"
                             } else {
-                                engine.saveConfig(baseUrl, apiKey, model)
+                                engine.saveConfig(baseUrl, apiKey.ifBlank { "ollama" }, model)
                                 savedTip = true; error = null
                             }
                         },

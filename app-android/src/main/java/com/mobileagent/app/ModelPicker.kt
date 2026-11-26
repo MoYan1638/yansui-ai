@@ -116,7 +116,7 @@ object ModelPresets {
         ModelPreset(
             provider = "local", name = "本地 Ollama",
             baseUrl = "http://127.0.0.1:11434/v1", model = "qwen3:8b",
-            desc = "本机 / 局域网跑，不花钱", window = "—",
+            desc = "电脑 Ollama 直连，无需 Key（局域网地址在设置页改）", window = "—",
             badges = listOf("离线")
         ),
     )
@@ -142,7 +142,13 @@ fun ModelPickerSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     fun pick(p: ModelPreset) {
-        if (engine.keyFor(p.provider).isNullOrBlank()) {
+        if (p.provider == "local") {
+            // 本地部署无 Key：直接切换，Ollama 不校验 Authorization（占位即可）
+            if (engine.switchModel(p, "ollama")) {
+                onSwitched()
+                onDismiss()
+            }
+        } else if (engine.keyFor(p.provider).isNullOrBlank()) {
             askKeyFor = p
         } else if (engine.switchModel(p)) {
             onSwitched()
@@ -383,7 +389,7 @@ private fun CustomModelDialog(engine: AgentEngine, onDismiss: () -> Unit, onSave
                 )
                 OutlinedTextField(
                     value = key, onValueChange = { key = it },
-                    label = { Text("API Key") }, singleLine = true,
+                    label = { Text("API Key（本地 Ollama / LM Studio 可不填）") }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)
@@ -393,11 +399,12 @@ private fun CustomModelDialog(engine: AgentEngine, onDismiss: () -> Unit, onSave
         confirmButton = {
             TextButton(
                 onClick = {
-                    engine.setProviderKey(providerKeyOf(baseUrl), key)
-                    engine.saveConfig(baseUrl, key, model)
+                    val k = key.ifBlank { "ollama" } // 本地服务无需 Key，占位
+                    engine.setProviderKey(providerKeyOf(baseUrl), k)
+                    engine.saveConfig(baseUrl, k, model)
                     onSaved()
                 },
-                enabled = baseUrl.isNotBlank() && model.isNotBlank() && key.isNotBlank()
+                enabled = baseUrl.isNotBlank() && model.isNotBlank()
             ) { Text("保存并使用") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
