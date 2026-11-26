@@ -377,7 +377,7 @@ private fun OnboardingCover() {
         }
         Text("言岁AI", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
         Spacer(Modifier.height(6.dp))
-        Text("一言一语 · 岁岁相伴", style = MonoStyle, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+        Text("言是你 · 岁是她", style = MonoStyle, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(10.dp))
         Text(
             "不止是聊天。你说任务，它调工具跑完——查资料、读写文件、调接口，全程可见每一步执行。",
@@ -782,6 +782,10 @@ fun SettingsScreen(engine: AgentEngine) {
     // Shizuku（可选能力，只建议不强制）
     var shizukuTick by remember { mutableIntStateOf(0) }
 
+    // 技能热更新（只跟踪 love-companion）
+    var skillUpdState by remember { mutableStateOf("idle") } // idle/checking/available/applying/done/latest/error
+    var skillUpdMsg by remember { mutableStateOf(SkillUpdater.localVersion(engine.skillUpdateDir)) }
+
     // 主动任务
     var tasks by remember { mutableStateOf(CronStore.all(ctx)) }
     var showAddTask by remember { mutableStateOf(false) }
@@ -970,6 +974,75 @@ fun SettingsScreen(engine: AgentEngine) {
                         "run_command 工具已可用：Agent 可通过 Shizuku 执行系统命令（每次执行都会弹窗请你确认，拒绝即取消）。"
                     else
                         "未解锁时 Agent 照常工作（文件/HTTP/记忆工具不受影响）。安装 Shizuku（adb 启动或无线调试激活）并回到本页授权后，命令行工具解锁；不装也不影响其他功能。",
+                    style = MaterialTheme.typography.bodySmall,
+                    lineHeight = 19.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                SectionLabel("技能更新 · love-companion")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        when (skillUpdState) {
+                            "checking" -> "○ 正在检查更新…"
+                            "available" -> "● 发现新版本：$skillUpdMsg"
+                            "applying" -> "○ 正在更新…"
+                            "done" -> "● 已更新到 $skillUpdMsg"
+                            "latest" -> "● 已是最新（$skillUpdMsg）"
+                            "error" -> "× 更新失败：$skillUpdMsg"
+                            else -> "● 当前版本：" + if (skillUpdMsg == "builtin") "APK 内置版" else skillUpdMsg
+                        },
+                        style = MonoStyle,
+                        fontSize = 11.sp,
+                        color = if (skillUpdState in listOf("available", "done", "latest"))
+                            MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    if (skillUpdState in listOf("idle", "done", "latest", "error")) {
+                        OutlinedButton(
+                            onClick = {
+                                skillUpdState = "checking"
+                                Thread {
+                                    try {
+                                        val st = SkillUpdater.check(engine.skillUpdateDir)
+                                        if (st.hasUpdate) {
+                                            skillUpdMsg = "${st.local} → ${st.remote}"
+                                            skillUpdState = "available"
+                                        } else {
+                                            skillUpdMsg = st.local
+                                            skillUpdState = "latest"
+                                        }
+                                    } catch (e: Exception) {
+                                        skillUpdMsg = e.message ?: "网络不可用"
+                                        skillUpdState = "error"
+                                    }
+                                }.start()
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        ) { Text("检查更新") }
+                    }
+                    if (skillUpdState == "available") {
+                        OutlinedButton(
+                            onClick = {
+                                skillUpdState = "applying"
+                                Thread {
+                                    try {
+                                        val v = SkillUpdater.apply(engine.skillUpdateDir)
+                                        engine.refreshSkills()
+                                        skillUpdMsg = v
+                                        skillUpdState = "done"
+                                    } catch (e: Exception) {
+                                        skillUpdMsg = e.message ?: "更新失败"
+                                        skillUpdState = "error"
+                                    }
+                                }.start()
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        ) { Text("立即更新") }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "技能内容托管在 GitHub 仓库：点「检查更新」拉取最新版替换本地文件，立即生效、无需重装 App。GitHub 不通时自动切换镜像源。",
                     style = MaterialTheme.typography.bodySmall,
                     lineHeight = 19.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

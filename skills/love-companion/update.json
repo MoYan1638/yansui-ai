@@ -1,0 +1,10 @@
+{
+  "version": "2.2.0-mobile.1",
+  "files": [
+    "SKILL.md",
+    "gate.json",
+    "references/commands.md",
+    "references/instructions.md",
+    "references/personas.md"
+  ]
+}

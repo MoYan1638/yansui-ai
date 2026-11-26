@@ -36,6 +36,7 @@ class AgentEngine(context: Context) {
     private val appContext = context.applicationContext
     val root: Path = appContext.filesDir.toPath()
     private val skillsDir: Path = root.resolve("skills")
+    val skillUpdateDir: Path get() = skillsDir // 供设置页技能热更新读取当前版本
     private val configPath: Path = root.resolve("config.json")
     private val keysPath: Path = root.resolve("keys.json")
     private val skillStatePath: Path = root.resolve("data").resolve("skills-state.json")
@@ -284,7 +285,10 @@ class AgentEngine(context: Context) {
         return JsonObject(target.toMutableMap().apply { put(keys.first(), setDeep(child, keys.drop(1), value)) })
     }
 
-    /** 从 assets/skills 递归提取技能包（覆盖式，用户数据在 data/ 不受影响） */
+    /**
+     * 从 assets/skills 递归提取技能包（覆盖式，用户数据在 data/ 不受影响）。
+     * 已热更新过的技能目录（有 .hotupdate.json 标记）跳过——本地更新版优先于 APK 内置版。
+     */
     private fun extractSkillsFromAssets() {
         fun copy(assetPath: String, target: Path) {
             val children = appContext.assets.list(assetPath) ?: return
@@ -297,6 +301,10 @@ class AgentEngine(context: Context) {
                 for (child in children) copy("$assetPath/$child", target.resolve(child))
             }
         }
-        copy("skills", skillsDir)
+        // 顶层按技能目录跳过：热更新过的目录保持云端版本，不被 APK 内置旧版覆盖
+        appContext.assets.list("skills")?.forEach { skill ->
+            if (Files.exists(skillsDir.resolve(skill).resolve(".hotupdate.json"))) return@forEach
+            copy("skills/$skill", skillsDir.resolve(skill))
+        }
     }
 }
