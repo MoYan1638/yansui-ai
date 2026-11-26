@@ -51,13 +51,11 @@ class ModelException(message: String) : Exception(message)
 
 /**
  * 模型适配层：统一走 OpenAI 兼容协议（chat/completions + tool calling），
- * 零 SDK 依赖，直接 java.net.http 调用。各家 API 与 Ollama/LM Studio 均吃这一个口。
+ * 零 SDK 依赖。HTTP 用 HttpURLConnection —— JVM 与 Android 全版本通用
+ * （教训：java.net.http.HttpClient 是桌面 JVM 专属 API，Android 上直接 NoClassDefFoundError）。
+ * 各家 API 与 Ollama/LM Studio 均吃这一个口。
  */
 class ModelClient(private val config: ModelConfig) {
-
-    private val http = java.net.http.HttpClient.newBuilder()
-        .connectTimeout(java.time.Duration.ofSeconds(30))
-        .build()
 
     /**
      * 发起一轮对话。messages 为 OpenAI 格式数组，tools 非空时带上工具 Schema。
@@ -72,17 +70,27 @@ class ModelClient(private val config: ModelConfig) {
                 put("tools", JsonArray(tools.map { it.toOpenAiSchema() }))
             }
         }
-        val request = java.net.http.HttpRequest.newBuilder()
-            .uri(java.net.URI.create("${config.baseUrl}/chat/completions"))
-            .header("Authorization", "Bearer ${config.apiKey}")
-            .header("Content-Type", "application/json")
-            .timeout(java.time.Duration.ofSeconds(120))
-            .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body.toString()))
-            .build()
-        val resp = http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString())
-        if (resp.statusCode() != 200) {
-            throw ModelException("HTTP ${resp.statusCode()}: ${resp.body().take(500)}")
+        val conn = java.net.URI("${config.baseUrl}/chat/completions").toURL()
+            .openConnection() as java.net.HttpURLConnection
+        try {
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 30_000
+            conn.readTimeout = 120_000
+            conn.doOutput = true
+            conn.setRequestProperty("Authorization", "Bearer ${config.apiKey}")
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val respBody = if (code in 200..299)
+                conn.inputStream.readBytes().toString(Charsets.UTF_8)
+            else
+                conn.errorStream?.readBytes()?.toString(Charsets.UTF_8) ?: ""
+            if (code != 200) {
+                throw ModelException("HTTP $code: ${respBody.take(500)}")
+            }
+            return Json.parseToJsonElement(respBody).jsonObject
+        } finally {
+            conn.disconnect()
         }
-        return Json.parseToJsonElement(resp.body()).jsonObject
     }
 }

@@ -1,14 +1,11 @@
 package com.mobileagent.core
 
 import kotlinx.serialization.json.*
+import java.net.HttpURLConnection
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.time.Duration
 import kotlin.io.path.*
 
 /**
@@ -77,16 +74,29 @@ class BuiltinTools(
                 val url = args["url"]!!.jsonPrimitive.content
                 if (!url.startsWith("https://")) throw ToolException("只允许 https 请求")
                 val method = args["method"]?.jsonPrimitive?.contentOrNull ?: "GET"
-                val builder = HttpRequest.newBuilder().uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(30))
-                when (method.uppercase()) {
-                    "GET" -> builder.GET()
-                    "POST" -> builder.POST(HttpRequest.BodyPublishers.ofString(
-                        args["body"]?.jsonPrimitive?.contentOrNull ?: ""))
-                    else -> throw ToolException("不支持的方法：$method")
+                if (method.uppercase() !in listOf("GET", "POST")) throw ToolException("不支持的方法：$method")
+                // HttpURLConnection：JVM / Android 全版本通用（java.net.http 是桌面 JVM 专属）
+                val conn = URI.create(url).toURL().openConnection() as HttpURLConnection
+                try {
+                    conn.requestMethod = method.uppercase()
+                    conn.connectTimeout = 30_000
+                    conn.readTimeout = 30_000
+                    if (method.uppercase() == "POST") {
+                        conn.doOutput = true
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.outputStream.use {
+                            it.write((args["body"]?.jsonPrimitive?.contentOrNull ?: "").toByteArray(Charsets.UTF_8))
+                        }
+                    }
+                    val code = conn.responseCode
+                    val respBody = if (code in 200..299)
+                        conn.inputStream.readBytes().toString(Charsets.UTF_8)
+                    else
+                        conn.errorStream?.readBytes()?.toString(Charsets.UTF_8) ?: ""
+                    return "HTTP $code\n${respBody.take(2000)}"
+                } finally {
+                    conn.disconnect()
                 }
-                val resp = HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.ofString())
-                return "HTTP ${resp.statusCode()}\n${resp.body().take(2000)}"
             }
         },
         object : Tool {

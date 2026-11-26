@@ -99,6 +99,9 @@ class AgentEngine(context: Context) {
             onDone(reply, loop.lastRounds, loop.lastTokensIn, loop.lastTokensOut)
         } catch (e: Exception) {
             onFailed(e.message ?: e.javaClass.simpleName)
+        } catch (e: Throwable) {
+            // Error 级（NoClassDefFoundError 等）也要拦住：底层缺失绝不能砸掉进程
+            onFailed("${e.javaClass.simpleName}: ${e.message ?: ""}")
         } finally {
             busy.set(false)
         }
