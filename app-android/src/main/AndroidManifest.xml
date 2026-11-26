@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 电池优化白名单：长任务/主动消息不被系统冻杀；弹系统确认框用，不静默获取 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 主动任务通知（Android 13+ 运行时申请，只建议不强制） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 重启后重排主动任务 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:label="Mobile Agent"
@@ -19,5 +23,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 主动任务触发 + 重启重排 -->
+        <receiver android:name=".CronTaskReceiver" android:exported="false" />
+        <receiver android:name=".CronBootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Shizuku 通道（M4）：可选能力，未安装 Shizuku 时应用照常工作 -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     </application>
 </manifest>

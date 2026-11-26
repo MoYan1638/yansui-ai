@@ -1,13 +1,19 @@
 package com.mobileagent.core
 
 import kotlinx.serialization.json.*
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
- * 有界工具循环——Agent 的核心（方案四道兜底全部实现）：
+ * 有界工具循环——Agent 的核心（自研方案兜底体系）：
  * 1. 轮数上限：超过 maxRounds 强制汇报停下，防死循环烧 token
  * 2. 参数校验：模型吐的工具调用先过 JSON 解析，错了把错误回填让它重试
  * 3. 上下文压缩：估算字符超阈值时压缩早期轮次（保最近 10 条不压缩）
  * 4. 工具隔离：单个工具抛异常不影响整体，异常信息作为观察结果回填
+ * 5. 失败观察指引：失败结果附带行动指引，防模型拿垃圾结果继续编
+ * 6. 轻量规划器：长任务先无工具生成子步骤计划再进循环（借鉴思想、自研实现，失败静默降级）
+ * 7. 技能按需注入：摘要常驻 + 相关性高的注入全文，其余由模型 read_file 按需读取
+ * 8. 记忆索引：相关记忆条目常驻上下文，全文用 memory_read 查看
  */
 class AgentLoop(
     private val client: ModelClient,
@@ -15,7 +21,9 @@ class AgentLoop(
     private val tools: List<Tool>,
     private val skills: List<Skill> = emptyList(),
     private val onToolCall: (name: String, args: String, result: String) -> Unit = { _, _, _ -> },
-    private val onToolStart: (name: String, args: String) -> Unit = { _, _ -> } // UI 显示“执行中”卡片
+    private val onToolStart: (name: String, args: String) -> Unit = { _, _ -> },
+    private val workspaceRoot: Path? = null, // 技能正文按需读取：算相对路径给 read_file
+    private val memoryFile: Path? = null,    // 长期记忆文件：注入相关条目索引
 ) {
 
     companion object {
@@ -24,30 +32,17 @@ class AgentLoop(
         private const val KEEP_RECENT = 10
         // 单个 skill 注入上限（字符）：超长截断，防止一个技能吃掉大半上下文
         private const val SKILL_BODY_LIMIT = 16_000
+        // 正文全文注入阈值：短文直接注入，长文走相关性判定
+        private const val SKILL_INLINE_LIMIT = 2_000
+        private const val GATE_MARK = "【合规闸门】"
+        private val PLAN_TRIGGER = Regex("(然后|之后|接着|首先|步骤|第[一二三四五1-5]步|一共)")
     }
 
-    private val systemPrompt = buildString {
-        append("你是运行在用户设备上的 Agent，通过调用工具完成用户的任务，而不是只输出文字建议。\n")
-        append("规则：\n")
-        append("1. 需要文件、网络、记忆、命令时主动调工具，一步步做完再汇报\n")
-        append("2. 每次工具调用后根据观察结果决定下一步，不要臆测结果\n")
-        append("3. 敏感操作（删除、支付、泄露隐私）必须先征询用户\n")
-        append("4. 任务完成后简洁汇报做了什么、结果在哪\n")
-        if (skills.isNotEmpty()) {
-            append("\n## 已加载技能\n")
-            for (skill in skills) {
-                append("\n### 技能：${skill.name}\n")
-                val body = if (skill.body.length > SKILL_BODY_LIMIT)
-                    skill.body.take(SKILL_BODY_LIMIT) + "\n…[正文过长已截断]"
-                else skill.body
-                append(body).append("\n")
-            }
-        }
-        // 自研「工具使用要点」：把实测经验/约束注入提示词，降低小模型传参错误率
-        val usageLines = tools.filter { it.usage.isNotBlank() }.joinToString("\n") { "- ${it.name}：${it.usage}" }
-        if (usageLines.isNotBlank()) {
+    private val usageSection = buildString {
+        val lines = tools.filter { it.usage.isNotBlank() }.joinToString("\n") { "- ${it.name}：${it.usage}" }
+        if (lines.isNotBlank()) {
             append("\n## 工具使用要点（务必遵守）\n")
-            append(usageLines).append("\n")
+            append(lines).append("\n")
         }
     }
 
@@ -59,15 +54,119 @@ class AgentLoop(
     var lastTokensOut: Int = 0
         private set
 
+    // ---------- 相关性（自研：字符 bigram 重合度，零依赖） ----------
+
+    private fun bigramScore(a: String, b: String): Double {
+        if (a.length < 2 || b.length < 2) return 0.0
+        val ga = a.windowed(2).toSet()
+        val gb = b.windowed(2).toSet()
+        val inter = ga.intersect(gb).size
+        return inter.toDouble() / ga.size.coerceAtLeast(1)
+    }
+
+    /** 与任务相关的记忆条目（自研索引：bigram 匹配 top N；少则全给） */
+    private fun memorySection(userInput: String): String? {
+        val f = memoryFile ?: return null
+        if (!Files.exists(f)) return null
+        val lines = runCatching { f.readTextCompat().lineSequence().filter { it.isNotBlank() }.toList() }
+            .getOrDefault(emptyList())
+        if (lines.isEmpty()) return null
+        val picked = if (lines.size <= 12) lines
+        else lines.sortedByDescending { bigramScore(userInput, it) }.take(12)
+        return "\n## 长期记忆（与任务相关的摘录；全部记忆可用 memory_read 查看）\n" +
+            picked.joinToString("\n") + "\n"
+    }
+
+    /** 技能区：摘要常驻 + 相关性/短文全文注入 + 按需读取指引（gate 技能绝不提供绕过路径） */
+    private fun skillSection(userInput: String): String {
+        if (skills.isEmpty()) return ""
+        val sb = StringBuilder("\n## 已加载技能\n")
+        val needRead = mutableListOf<Skill>()
+        for (skill in skills) {
+            val gated = skill.body.startsWith(GATE_MARK)
+            if (gated) {
+                // 法规红线：闸门未确认，只给提示行，不注入正文、不给任何读取路径
+                sb.append("\n### 技能：${skill.name}（未启用）\n${skill.body}\n")
+                continue
+            }
+            val related = bigramScore(userInput, skill.name + " " + skill.description) >= 0.04
+            if (skill.body.length <= SKILL_INLINE_LIMIT || related) {
+                sb.append("\n### 技能：${skill.name}\n")
+                val body = if (skill.body.length > SKILL_BODY_LIMIT)
+                    skill.body.take(SKILL_BODY_LIMIT) + "\n…[正文过长已截断]"
+                else skill.body
+                sb.append(body).append("\n")
+            } else {
+                sb.append("\n### 技能：${skill.name}（摘要，正文未注入）\n${skill.description}\n")
+                if (workspaceRoot != null) needRead.add(skill)
+            }
+        }
+        if (needRead.isNotEmpty() && workspaceRoot != null) {
+            sb.append("\n若任务与上述带「摘要」标记的技能相关，先用 read_file 读取其 SKILL.md 获取完整指令再行动：\n")
+            for (skill in needRead) {
+                val rel = runCatching {
+                    workspaceRoot!!.relativize(skill.dir).resolve("SKILL.md").toString()
+                }.getOrDefault(skill.dir.fileName.toString() + "/SKILL.md")
+                sb.append("- ${skill.name}: read_file(path=\"$rel\")\n")
+            }
+        }
+        return sb.toString()
+    }
+
+    /** 轻量规划器触发：长文本或多步骤特征（借鉴思想、自研启发式） */
+    private fun needsPlan(userInput: String): Boolean =
+        userInput.length >= 40 || PLAN_TRIGGER.containsMatchIn(userInput)
+
+    private fun planFor(userInput: String): String? = try {
+        val resp = client.chat(
+            listOf(
+                msg(
+                    "system",
+                    "你是任务规划器。针对用户任务输出 3-6 行执行计划，每行一个子步骤（可注明打算使用的工具）。" +
+                    "只输出计划本身，不要执行、不要解释、不要多余空行。"
+                ),
+                msg("user", userInput)
+            ),
+            emptyList()
+        )
+        resp["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+            ?.get("message")?.jsonObject
+            ?.get("content")?.jsonPrimitive?.contentOrNull
+            ?.takeIf { it.isNotBlank() && !it.startsWith("模型调用失败") }
+    } catch (e: Exception) {
+        null // 计划失败静默降级，不影响主流程
+    }
+
     /** 单次任务：把用户输入加入历史并循环到模型给出最终回答 */
     fun run(userInput: String, history: MutableList<JsonElement>): String {
         history.add(msg("user", userInput))
+
+        val systemPrompt = buildString {
+            append("你是运行在用户设备上的 Agent，通过调用工具完成用户的任务，而不是只输出文字建议。\n")
+            append("规则：\n")
+            append("1. 需要文件、网络、记忆时主动调工具，一步步做完再汇报\n")
+            append("2. 每次工具调用后根据观察结果决定下一步，不要臆测结果\n")
+            append("3. 敏感操作（删除、支付、泄露隐私）必须先征询用户\n")
+            append("4. 任务完成后简洁汇报做了什么、结果在哪\n")
+        } + skillSection(userInput) + usageSection + (memorySection(userInput) ?: "")
+
+        // 轻量规划器：长任务先出计划（自研降级：失败跳过）
         var rounds = 0
+        val plan = if (needsPlan(userInput) && rounds == 0) planFor(userInput) else null
+        if (plan != null) {
+            rounds++ // 规划占用一轮配额
+        }
+        val finalSystem = if (plan != null)
+            "$systemPrompt\n## 任务计划（先按计划逐步执行，情况变化可调整）\n$plan\n"
+        else systemPrompt
+
+        lastRounds = rounds
+
         while (rounds < config.maxRounds) {
             rounds++
             compressIfNeeded(history)
             val resp = try {
-                client.chat(listOf(msg("system", systemPrompt)) + history, tools)
+                client.chat(listOf(msg("system", finalSystem)) + history, tools)
             } catch (e: ModelException) {
                 lastRounds = rounds
                 return "模型调用失败：${e.message}"

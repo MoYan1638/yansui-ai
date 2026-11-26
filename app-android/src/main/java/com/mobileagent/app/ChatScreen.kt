@@ -28,7 +28,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -56,7 +58,8 @@ private sealed interface ChatItem {
         val args: String,
         val running: Boolean,
         val ok: Boolean,
-        val result: String
+        val result: String,
+        val pending: Boolean = false // 待确认态（敏感操作，用户弹窗决定中）
     ) : ChatItem
 }
 
@@ -100,14 +103,16 @@ private fun Bubble(text: String, isUser: Boolean) {
 
 @Composable
 private fun ToolCard(item: ChatItem.Tool) {
-    var open by remember { mutableStateOf(!item.running) }
+    var open by remember { mutableStateOf(!item.running || item.pending) }
     val statusText = when {
+        item.pending -> "待确认"
         item.running -> "执行中"
         item.ok -> "完成"
         item.result.contains("拒绝") -> "已拒绝"
         else -> "失败"
     }
     val statusColor = when {
+        item.pending -> FailColor
         item.running -> MaterialTheme.colorScheme.onSurfaceVariant
         item.ok -> MaterialTheme.colorScheme.primary
         else -> FailColor
@@ -128,7 +133,7 @@ private fun ToolCard(item: ChatItem.Tool) {
                     .padding(horizontal = 12.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (item.running) {
+                if (item.running && !item.pending) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(11.dp),
                         strokeWidth = 1.5.dp,
@@ -203,7 +208,22 @@ fun ChatScreen(
     var running by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
     var currentModel by remember { mutableStateOf(engine.config?.model) }
+    var pendingConfirm by remember { mutableStateOf<Pair<String, (Boolean) -> Unit>?>(null) }
     val listState = rememberLazyListState()
+
+    // 运行确认桥：工具链敏感操作 → 弹确认对话框（原型待确认卡片态）
+    DisposableEffect(engine) {
+        engine.onConfirmRequest = { cmd, respond ->
+            // 标记最后一张执行中卡片为「待确认」
+            val idx = items.indexOfLast { it is ChatItem.Tool && it.running }
+            if (idx >= 0) {
+                val t = items[idx] as ChatItem.Tool
+                items[idx] = t.copy(pending = true)
+            }
+            pendingConfirm = cmd to respond
+        }
+        onDispose { engine.onConfirmRequest = null }
+    }
 
     // 新条目自动滚到底部
     LaunchedEffect(items.size) {
@@ -469,6 +489,54 @@ fun ChatScreen(
             onDismiss = { showPicker = false },
             onSwitched = { currentModel = engine.config?.model },
             onOpenSettings = onOpenSettings
+        )
+    }
+
+    // 敏感操作确认（原型：允许执行 / 拒绝）
+    pendingConfirm?.let { (cmd, respond) ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { respond(false); pendingConfirm = null },
+            title = { Text("敏感操作待确认") },
+            text = {
+                Column {
+                    Text(
+                        "Agent 请求执行以下命令：",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Text(
+                            cmd,
+                            style = MonoStyle,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "命令可能影响系统状态且不可逆，请确认后再允许。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { respond(true); pendingConfirm = null }) {
+                    Text("允许执行", color = MaterialTheme.colorScheme.primary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { respond(false); pendingConfirm = null }) {
+                    Text("拒绝", color = FailColor)
+                }
+            }
         )
     }
 }

@@ -35,12 +35,24 @@ fun main(args: Array<String>) {
     println("-".repeat(56))
 
     val client = ModelClient(effective)
+    // 桌面 JVM：本地 shell 通道（Windows cmd / Unix sh），保留原有 y/N 确认
     val tools = BuiltinTools(
         workspaceRoot = repoRoot,
         memoryDir = dataDir.resolve("memory"),
         confirm = { cmd ->
             print("⚠ 执行命令（敏感操作）：$cmd\n允许吗？[y/N] ")
             stdin.readLine()?.trim()?.lowercase() == "y"
+        },
+        commandRunner = { cmd ->
+            val isWin = System.getProperty("os.name").lowercase().contains("windows")
+            val process = ProcessBuilder(*(if (isWin) arrayOf("cmd.exe", "/c", cmd) else arrayOf("sh", "-c", cmd)))
+                .directory(repoRoot.toFile())
+                .redirectErrorStream(true)
+                .start()
+            val finished = process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)
+            val output = process.inputStream.readBytes().toString(Charsets.UTF_8).take(4000)
+            if (finished) "退出码 ${process.exitValue()}\n$output"
+            else { process.destroyForcibly(); "命令超时（60s），已终止" }
         }
     )
 

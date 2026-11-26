@@ -46,6 +46,22 @@ class AgentEngine(context: Context) {
     private val history = mutableListOf<JsonElement>() // 受 busy 标志保护，单任务串行
     private val providerKeys = mutableMapOf<String, String>() // 厂商 → Key，切换模型复用
     private val disabledSkills = mutableSetOf<String>() // 技能页开关的关闭状态，持久化
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** 运行确认桥（M4）：UI 层注册，工具链收到敏感操作时阻塞等待用户决定，超时/未接默拒 */
+    var onConfirmRequest: ((command: String, respond: (Boolean) -> Unit) -> Unit)? = null
+
+    private fun askConfirm(cmd: String): Boolean {
+        val handler = onConfirmRequest ?: return false
+        val latch = java.util.concurrent.CountDownLatch(1)
+        var granted = false
+        mainHandler.post { handler(cmd) { granted = it; latch.countDown() } }
+        return try {
+            latch.await(120, java.util.concurrent.TimeUnit.SECONDS) && granted
+        } catch (e: InterruptedException) {
+            false
+        }
+    }
 
     var skills: List<Skill> = emptyList()
         private set
@@ -86,10 +102,13 @@ class AgentEngine(context: Context) {
         if (!busy.compareAndSet(false, true)) { onFailed("当前有任务正在执行"); return }
         try {
             val active = skills.filter { it.name !in disabledSkills } // 关闭的技能不注入
+            val commandRunner: ((String) -> String)? =
+                if (ShizukuGate.granted()) { cmd -> ShizukuGate.run(cmd, root.toString()) } else null
             val tools = BuiltinTools(
                 workspaceRoot = root,
                 memoryDir = memoryDir,
-                confirm = { false } // 移动端：命令行执行一律拒绝
+                confirm = { cmd -> askConfirm(cmd) }, // 敏感操作弹 UI 确认（原型待确认卡片）；无 UI 时默拒
+                commandRunner = commandRunner // Shizuku 已授权则可用，否则拒绝并给替代建议
             )
             val loop = AgentLoop(
                 client = ModelClient(cfg),
@@ -97,7 +116,9 @@ class AgentEngine(context: Context) {
                 tools = tools.all,
                 skills = active,
                 onToolCall = { name, args, result -> onToolCall(name, args, result) },
-                onToolStart = { name, args -> onToolStart(name, args) }
+                onToolStart = { name, args -> onToolStart(name, args) },
+                workspaceRoot = root,                       // 技能正文按需读取
+                memoryFile = memoryDir.resolve("memory.md") // 记忆索引注入
             )
             val reply = loop.run(input, history)
             onDone(reply, loop.lastRounds, loop.lastTokensIn, loop.lastTokensOut)

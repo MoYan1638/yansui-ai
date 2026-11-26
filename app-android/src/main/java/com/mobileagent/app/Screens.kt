@@ -1,5 +1,7 @@
 package com.mobileagent.app
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloat
@@ -670,12 +672,25 @@ fun SkillsScreen(engine: AgentEngine) {
 @Composable
 fun SettingsScreen(engine: AgentEngine) {
     val cfg = engine.config
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     var baseUrl by remember(cfg) { mutableStateOf(cfg?.baseUrl ?: "https://api.deepseek.com/v1") }
     var model by remember(cfg) { mutableStateOf(cfg?.model ?: "deepseek-chat") }
     var apiKey by remember(cfg) { mutableStateOf(cfg?.apiKey ?: "") }
     var savedTip by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var localMode by remember { mutableStateOf(baseUrl.contains("11434") || baseUrl.contains("localhost")) }
+
+    // Shizuku（可选能力，只建议不强制）
+    var shizukuTick by remember { mutableIntStateOf(0) }
+
+    // 主动任务
+    var tasks by remember { mutableStateOf(CronStore.all(ctx)) }
+    var showAddTask by remember { mutableStateOf(false) }
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val notifGranted = if (android.os.Build.VERSION.SDK_INT >= 33) {
+        ctx.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+    } else true
 
     val providers = listOf(
         "deepseek" to ("https://api.deepseek.com/v1" to "deepseek-chat"),
@@ -801,7 +816,6 @@ fun SettingsScreen(engine: AgentEngine) {
                 )
 
                 SectionLabel("后台活跃")
-                val ctx = androidx.compose.ui.platform.LocalContext.current
                 val pm = ctx.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
                 val whitelisted = pm.isIgnoringBatteryOptimizations(ctx.packageName)
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -836,6 +850,127 @@ fun SettingsScreen(engine: AgentEngine) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                SectionLabel("命令行通道 · Shizuku（可选）")
+                val shizukuState = remember(shizukuTick) {
+                    when {
+                        ShizukuGate.granted() -> "ready"
+                        ShizukuGate.ping() -> "ping"
+                        else -> "none"
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        when (shizukuState) {
+                            "ready" -> "● 已就绪 · 命令行工具已解锁"
+                            "ping" -> "○ Shizuku 运行中 · 待授权"
+                            else -> "○ 未安装 Shizuku"
+                        },
+                        style = MonoStyle,
+                        fontSize = 11.sp,
+                        color = if (shizukuState == "ready") MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    if (shizukuState == "ping") {
+                        OutlinedButton(
+                            onClick = { ShizukuGate.requestPermission(); shizukuTick++ },
+                            shape = RoundedCornerShape(8.dp)
+                        ) { Text("授权") }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (shizukuState == "ready")
+                        "run_command 工具已可用：Agent 可通过 Shizuku 执行系统命令（每次执行都会弹窗请你确认，拒绝即取消）。"
+                    else
+                        "未解锁时 Agent 照常工作（文件/HTTP/记忆工具不受影响）。安装 Shizuku（adb 启动或无线调试激活）并回到本页授权后，命令行工具解锁；不装也不影响其他功能。",
+                    style = MaterialTheme.typography.bodySmall,
+                    lineHeight = 19.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                SectionLabel("主动任务（定时）")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (notifGranted) "● 任务通知已开启" else "○ 未开启任务通知",
+                        style = MonoStyle,
+                        fontSize = 11.sp,
+                        color = if (notifGranted) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    if (!notifGranted && android.os.Build.VERSION.SDK_INT >= 33) {
+                        OutlinedButton(
+                            onClick = { notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) },
+                            shape = RoundedCornerShape(8.dp)
+                        ) { Text("开启通知") }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                tasks.forEach { task ->
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(task.time, style = MonoStyle, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    task.prompt,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                task.lastResult?.let {
+                                    Text(
+                                        "上次：$it",
+                                        style = MonoStyle,
+                                        fontSize = 10.sp,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Text(
+                                if (task.repeat) "每日" else "单次",
+                                style = MonoStyle, fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "✕",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .padding(start = 12.dp)
+                                    .clickable {
+                                        CronStore.remove(ctx, task.id)
+                                        CronScheduler.cancel(ctx, task.id)
+                                        tasks = CronStore.all(ctx)
+                                    }
+                            )
+                        }
+                    }
+                }
+                OutlinedButton(
+                    onClick = { showAddTask = true },
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.padding(top = 6.dp)
+                ) { Text("＋ 添加主动任务") }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "到点后 Agent 在后台自动执行任务，结果通过通知告诉你（如：晚安问候 / 早报 / 提醒）。需要电池白名单配合。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 Spacer(Modifier.height(18.dp))
                 Text(
                     "engine core M1/M2 · ${engine.skills.size} skills · maxRounds ${engine.config?.maxRounds ?: 15}",
@@ -845,5 +980,55 @@ fun SettingsScreen(engine: AgentEngine) {
                 )
             }
         }
+    }
+
+    // 添加主动任务对话框
+    if (showAddTask) {
+        var taskPrompt by remember { mutableStateOf("") }
+        var taskTime by remember { mutableStateOf("08:00") }
+        var taskRepeat by remember { mutableStateOf(true) }
+        var taskError by remember { mutableStateOf<String?>(null) }
+        AlertDialog(
+            onDismissRequest = { showAddTask = false },
+            title = { Text("添加主动任务") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = taskPrompt, onValueChange = { taskPrompt = it },
+                        label = { Text("任务描述（发给 Agent）") },
+                        modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)
+                    )
+                    OutlinedTextField(
+                        value = taskTime, onValueChange = { taskTime = it },
+                        label = { Text("触发时间（HH:mm，24 小时制）") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("每天重复", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.width(12.dp))
+                        Switch(checked = taskRepeat, onCheckedChange = { taskRepeat = it })
+                    }
+                    taskError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (taskPrompt.isBlank()) taskError = "任务描述不能为空"
+                        else if (!Regex("^([01]?\\d|2[0-3]):[0-5]\\d$").matches(taskTime.trim())) taskError = "时间格式不对，例：08:00"
+                        else {
+                            val task = CronStore.add(ctx, taskPrompt, taskTime, taskRepeat)
+                            CronScheduler.scheduleNext(ctx, task)
+                            tasks = CronStore.all(ctx)
+                            showAddTask = false
+                        }
+                    }
+                ) { Text("添加") }
+            },
+            dismissButton = { TextButton(onClick = { showAddTask = false }) { Text("取消") } }
+        )
     }
 }

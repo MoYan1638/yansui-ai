@@ -16,7 +16,8 @@ import kotlin.io.path.*
 class BuiltinTools(
     workspaceRoot: Path,
     memoryDir: Path,
-    private val confirm: (command: String) -> Boolean = { true }
+    private val confirm: (command: String) -> Boolean = { true },
+    private val commandRunner: ((command: String) -> String)? = null // 命令执行通道：桌面 JVM=本地 shell；移动端=Shizuku；未接入则拒绝
 ) {
     private val root: Path = workspaceRoot.toAbsolutePath().normalize()
     private val memoryFile: Path = memoryDir.resolve("memory.md").toAbsolutePath().normalize()
@@ -131,19 +132,14 @@ class BuiltinTools(
         object : Tool {
             override val name = "run_command"
             override val description = "在工作区内执行一条命令行命令（敏感操作，会先请求用户确认）"
-            override val usage = "移动端不可用（调用会被拒绝）；如任务需要命令行，直接向用户说明限制，不要反复重试"
+            override val usage = "敏感操作：调用后用户会看到确认弹窗，被拒绝就换方法，不要反复重试同一命令"
             override val parameters = """{"type":"object","properties":{"command":{"type":"string","description":"要执行的命令"}},"required":["command"]}"""
             override fun execute(args: JsonObject): String {
                 val cmd = args["command"]!!.jsonPrimitive.content
                 if (!confirm(cmd)) throw ToolException("用户拒绝了该命令")
-                val process = ProcessBuilder("cmd.exe", "/c", cmd)
-                    .directory(root.toFile())
-                    .redirectErrorStream(true)
-                    .start()
-                val finished = process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)
-                val output = process.inputStream.readBytes().toString(Charsets.UTF_8).take(4000)
-                return if (finished) "退出码 ${process.exitValue()}\n$output"
-                else { process.destroyForcibly(); "命令超时（60s），已终止" }
+                val runner = commandRunner
+                    ?: throw ToolException("当前设备未接入命令行通道（未安装/未授权 Shizuku）。请改用文件/HTTP 工具完成任务，或向用户说明")
+                return runner(cmd)
             }
         }
     )

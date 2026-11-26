@@ -16,6 +16,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         engine.initialize()
+        CronScheduler.scheduleAll(this) // 重启/重排主动任务（Octop restart-safe 思想的手机端实现）
         setContent {
             MobileAgentTheme {
                 // 无配置 → 四步引导（原型 onboarding）；已有配置 → 直接主框架
