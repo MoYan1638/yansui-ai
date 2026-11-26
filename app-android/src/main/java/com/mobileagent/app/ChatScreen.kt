@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -93,6 +96,7 @@ fun ChatScreen(
     fun send() {
         val text = input.trim()
         if (text.isEmpty() || running) return
+        if (currentModel == null) { showPicker = true; return } // 未连接模型：先把选模型弹层弹出来
         input = ""
         running = true
         items += ChatItem.User(text)
@@ -167,16 +171,35 @@ fun ChatScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text("●", color = MaterialTheme.colorScheme.primary, fontSize = 28.sp)
-                        Text(
-                            "引擎就绪，派个任务试试",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            "core M1/M2 · ${engine.skills.size} 个技能已加载",
-                            style = MonoStyle,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        if (currentModel == null) {
+                            // 首次使用：不挡路，直接在会话页引导选模型
+                            Text(
+                                "还没有连接模型",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                "点右上角 ⚡ 选一个内置模型，填一次 Key 就能开跑",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            OutlinedButton(
+                                onClick = { showPicker = true },
+                                shape = RoundedCornerShape(20.dp)
+                            ) { Text("选择模型") }
+                        } else {
+                            Text(
+                                "引擎就绪，派个任务试试",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "core M1/M2 · ${engine.skills.size} 个技能已加载",
+                                style = MonoStyle,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }

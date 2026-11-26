@@ -99,68 +99,7 @@ fun AppScaffold(engine: AgentEngine) {
     }
 }
 
-// ---------- 首启引导 ----------
-
-@Composable
-fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
-    var baseUrl by remember { mutableStateOf("https://api.deepseek.com/v1") }
-    var model by remember { mutableStateOf("deepseek-chat") }
-    var apiKey by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .systemBarsPadding()
-            .padding(horizontal = 28.dp),
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text("●", color = MaterialTheme.colorScheme.primary, fontSize = 40.sp)
-        Spacer(Modifier.height(12.dp))
-        Text("Mobile Agent", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "跑在你手机上的 Agent · 通过工具完成任务 · 支持技能扩展",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(32.dp))
-
-        Field("接口地址（OpenAI 兼容）", baseUrl, { baseUrl = it }, singleLine = true)
-        Spacer(Modifier.height(12.dp))
-        Field("模型名", model, { model = it }, singleLine = true)
-        Spacer(Modifier.height(12.dp))
-        Field("API Key", apiKey, { apiKey = it; error = null }, singleLine = true)
-        error?.let {
-            Spacer(Modifier.height(8.dp))
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        }
-        Spacer(Modifier.height(24.dp))
-
-        Button(
-            onClick = {
-                if (apiKey.isBlank() || baseUrl.isBlank() || model.isBlank()) {
-                    error = "三项都要填（Key 在各模型平台的控制台获取）"
-                } else {
-                    engine.saveConfig(baseUrl, apiKey, model)
-                    onDone()
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Text("保存并开始", modifier = Modifier.padding(vertical = 6.dp))
-        }
-        Spacer(Modifier.height(16.dp))
-        Text(
-            "Key 只存在本机应用私有目录，不进任何云端 · 之后可在设置页修改",
-            style = MonoStyle,
-            fontSize = 10.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
+// ---------- 共用输入框 ----------
 
 @Composable
 private fun Field(label: String, value: String, onChange: (String) -> Unit, singleLine: Boolean = false) {

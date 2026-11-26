@@ -73,7 +73,7 @@ class AgentEngine(context: Context) {
         onFailed: (String) -> Unit,
     ) {
         val cfg = config
-        if (cfg == null) { onFailed("尚未配置模型（设置页填写 API 信息）"); return }
+        if (cfg == null) { onFailed("尚未连接模型，点右上角 ⚡ 选一个"); return }
         if (!busy.compareAndSet(false, true)) { onFailed("当前有任务正在执行"); return }
         try {
             val tools = BuiltinTools(

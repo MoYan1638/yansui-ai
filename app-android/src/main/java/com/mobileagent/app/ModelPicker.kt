@@ -123,7 +123,7 @@ object ModelPresets {
 
     /** 顶栏展示名：命中预设用预设名，否则原样显示模型 id */
     fun displayName(model: String?): String =
-        all.firstOrNull { it.model == model }?.name ?: (model ?: "未配置")
+        all.firstOrNull { it.model == model }?.name ?: (model ?: "选择模型")
 }
 
 // ---------- 模型选择弹层 ----------
