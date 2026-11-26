@@ -372,7 +372,7 @@ private fun OnboardingCover() {
         Spacer(Modifier.height(22.dp))
         Text("SKILLS", style = MonoStyle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
-            "恋人伴侣陪伴 · 从0到1做软件 · 推上 GitHub",
+            "内置 love-companion · 恋人伴侣陪伴",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(top = 4.dp)
