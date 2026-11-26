@@ -377,7 +377,7 @@ private fun OnboardingCover() {
         }
         Text("言岁AI", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
         Spacer(Modifier.height(6.dp))
-        Text("言是你 · 岁是她", style = MonoStyle, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+        Text("言赴岁安 · 让AI常伴", style = MonoStyle, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(10.dp))
         Text(
             "不止是聊天。你说任务，它调工具跑完——查资料、读写文件、调接口，全程可见每一步执行。",

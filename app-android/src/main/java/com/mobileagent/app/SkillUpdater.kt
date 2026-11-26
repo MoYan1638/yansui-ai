@@ -27,8 +27,8 @@ import java.nio.file.StandardCopyOption
 object SkillUpdater {
 
     const val SKILL = "love-companion"
-    private const val BASE_RAW = "https://raw.githubusercontent.com/MoYan1638/yansui/main/skills/$SKILL"
-    private const val BASE_MIRROR = "https://ghproxy.net/https://raw.githubusercontent.com/MoYan1638/yansui/main/skills/$SKILL"
+    private const val BASE_RAW = "https://raw.githubusercontent.com/MoYan1638/yansui-ai/main/skills/$SKILL"
+    private const val BASE_MIRROR = "https://ghproxy.net/https://raw.githubusercontent.com/MoYan1638/yansui-ai/main/skills/$SKILL"
 
     /** 本地标记：记录已更新到的版本与文件清单（用于清理旧版多余文件） */
     private data class LocalState(val version: String, val files: List<String>)

@@ -1,6 +1,6 @@
 # 言岁AI（Yansui）
 
-> 言是你 · 岁是她
+> 言赴岁安 · 让AI常伴
 > 手机上的 AI Agent：说一句话，它调工具把事做完——查资料、读写文件、调接口，每一步都可见。
 
 手机 Agent 项目 monorepo（方案见 Obsidian：`项目/手机Agent-自研方案.md`）。
