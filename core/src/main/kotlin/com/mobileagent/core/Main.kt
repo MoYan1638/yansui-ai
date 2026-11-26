@@ -31,7 +31,7 @@ fun main(args: Array<String>) {
 
     println("Mobile Agent M1 · JVM 核心循环")
     println("模型：${effective.model} · 端点：${effective.baseUrl} · 轮数上限：${effective.maxRounds}")
-    println("输入任务开始；/exit 退出，/new 开新会话，/memory 看记忆，/history 看消息数")
+    println("输入任务开始；/exit 退出，/new 开新会话，/memory 看记忆，/history 看消息数，/skills 看已加载技能")
     println("-".repeat(56))
 
     val client = ModelClient(effective)
@@ -43,7 +43,16 @@ fun main(args: Array<String>) {
             stdin.readLine()?.trim()?.lowercase() == "y"
         }
     )
-    val loop = AgentLoop(client, effective, tools.all) { name, argsJson, result ->
+
+    // M2：加载内置技能（skills/ 目录），love-companion 过合规闸门
+    val skills = SkillLoader.loadAll(repoRoot.resolve("skills")).map { SkillLoader.applyGate(it, repoRoot) }
+    if (skills.isNotEmpty()) {
+        println("已加载技能：${skills.joinToString(", ") {
+            if (it.body.startsWith("【合规闸门】")) "${it.name}（合规闸门拦截）" else "${it.name}（就绪）"
+        }}")
+    }
+
+    val loop = AgentLoop(client, effective, tools.all, skills) { name, argsJson, result ->
         println("  [工具] $name($argsJson)")
         println("  [结果] ${result.replace("\n", "\n         ").take(300)}")
     }
@@ -62,6 +71,11 @@ fun main(args: Array<String>) {
                 println(if (Files.exists(mf)) Files.readString(mf) else "（记忆为空）"); continue
             }
             input == "/history" -> { println("当前会话 ${history.size} 条消息"); continue }
+            input == "/skills" -> {
+                if (skills.isEmpty()) println("（未加载任何技能）")
+                else skills.forEach { println("● ${it.name} —— ${it.description.take(80)}…") }
+                continue
+            }
         }
         println()
         val answer = loop.run(input, history)

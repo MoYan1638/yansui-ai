@@ -1,0 +1,5 @@
+{
+  "setting": "data/love-companion/settings.json",
+  "field": "合规.已满18周岁确认",
+  "notice": "love-companion 需确认用户已年满 18 周岁（《人工智能拟人化互动服务管理暂行办法》第二章第十四条）。用户明确确认后，由用户本人将 data/love-companion/settings.json 中该字段置为 true。"
+}

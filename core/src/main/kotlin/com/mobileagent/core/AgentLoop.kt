@@ -13,6 +13,7 @@ class AgentLoop(
     private val client: ModelClient,
     private val config: ModelConfig,
     private val tools: List<Tool>,
+    private val skills: List<Skill> = emptyList(),
     private val onToolCall: (name: String, args: String, result: String) -> Unit = { _, _, _ -> }
 ) {
 
@@ -20,6 +21,8 @@ class AgentLoop(
         // TODO(M3/12.2 细化): 按真实模型窗口大小与 tokenizer 估算替换字符估算
         private const val COMPRESS_TRIGGER_CHARS = 24_000
         private const val KEEP_RECENT = 10
+        // 单个 skill 注入上限（字符）：超长截断，防止一个技能吃掉大半上下文
+        private const val SKILL_BODY_LIMIT = 16_000
     }
 
     private val systemPrompt = buildString {
@@ -29,6 +32,16 @@ class AgentLoop(
         append("2. 每次工具调用后根据观察结果决定下一步，不要臆测结果\n")
         append("3. 敏感操作（删除、支付、泄露隐私）必须先征询用户\n")
         append("4. 任务完成后简洁汇报做了什么、结果在哪\n")
+        if (skills.isNotEmpty()) {
+            append("\n## 已加载技能\n")
+            for (skill in skills) {
+                append("\n### 技能：${skill.name}\n")
+                val body = if (skill.body.length > SKILL_BODY_LIMIT)
+                    skill.body.take(SKILL_BODY_LIMIT) + "\n…[正文过长已截断]"
+                else skill.body
+                append(body).append("\n")
+            }
+        }
     }
 
     /** 单次任务：把用户输入加入历史并循环到模型给出最终回答 */
