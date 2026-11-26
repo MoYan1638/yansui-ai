@@ -96,6 +96,94 @@ private fun fetchOpenAiModels(base: String): List<String> {
     }
 }
 
+
+/**
+ * 本地部署帮助弹窗：两条路线的命令，逐条可复制；
+ * 底部一键回填对应的 BASE URL，减少手抄。
+ */
+@Composable
+private fun LocalHelpDialog(onPickUrl: (String) -> Unit, onDismiss: () -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    fun copy(text: String) {
+        val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+            as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("cmd", text))
+    }
+
+    @Composable
+    fun Cmd(text: String) {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text,
+                    style = MonoStyle,
+                    fontSize = 10.5.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    "复制",
+                    style = MonoStyle,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clickable { copy(text) }
+                        .padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
+                )
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("本地模型 · 一步步命令") },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                item {
+                    Text("路线① 有电脑 · Ollama", style = MonoStyle, fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.primary)
+                }
+                item { Cmd("电脑命令行：winget install Ollama.Ollama") }
+                item { Cmd("电脑命令行：setx OLLAMA_HOST 0.0.0.0") }
+                item { Cmd("电脑命令行：ollama pull qwen3:8b") }
+                item {
+                    TextButton(onClick = { onPickUrl("http://192.168.1.5:11434/v1") }) {
+                        Text("↳ 填这个地址（改成你的电脑 IP）")
+                    }
+                }
+                item { HorizontalDivider(color = MaterialTheme.colorScheme.outline) }
+                item {
+                    Text("路线② 没电脑 · Termux", style = MonoStyle, fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.primary)
+                }
+                item { Cmd("Termux：pkg install tur-repo -y") }
+                item { Cmd("Termux：pkg install llamacpp -y") }
+                item { Cmd("Termux：llama-server -m /sdcard/Download/模型.gguf -c 4096 --port 8080") }
+                item {
+                    Text(
+                        "模型 .gguf 文件从 ModelScope/HuggingFace 下载后放手机 Download；模型越小越快（1.5B～4B）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                item {
+                    TextButton(onClick = { onPickUrl("http://127.0.0.1:8080/v1") }) {
+                        Text("↳ 填这个地址")
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("知道了") } }
+    )
+}
+
 /** 本地模型发现 · Ollama 原生端点：GET {base}/api/tags */
 private fun fetchOllamaTags(base: String): List<String> {
     val conn = java.net.URI("$base/api/tags").toURL().openConnection() as java.net.HttpURLConnection
@@ -300,6 +388,7 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Spacer(Modifier.height(4.dp))
+                    var showHelp by remember { mutableStateOf(false) }
                     Text(
                         if (useLocal)
                             "两种跑法，都不需要 API Key：\n① 有电脑：装 Ollama，设 OLLAMA_HOST=0.0.0.0，填电脑局域网地址（例 192.168.1.5:11434/v1）；\n② 没电脑：手机装 Termux，在里面装 llama.cpp 并启动 llama-server（例 127.0.0.1:8080/v1）。手机只能跑 1.5B～4B 量化小模型，速度和续航有限。\n模型在对应平台拉取/导入，这里自动发现已装的。"
@@ -308,7 +397,12 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(Modifier.height(20.dp))
+                    if (useLocal) {
+                        TextButton(onClick = { showHelp = true }) {
+                            Text("查看一步步命令（点开复制）", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    Spacer(Modifier.height(if (useLocal) 4.dp else 20.dp))
                     Field("BASE URL", baseUrl, {
                         baseUrl = it
                         if (!useLocal) model = if (it.contains("11434")) "qwen3:8b" else "deepseek-chat"
@@ -388,6 +482,16 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                         Spacer(Modifier.height(10.dp))
                         Field("MODEL", model, { model = it; testResult = null }, singleLine = true,
                             hint = "可手填（对应 ollama 里的模型名）")
+
+                        // 本地部署帮助：两条路线的可复制命令
+                        if (showHelp) {
+                            LocalHelpDialog(
+                                onPickUrl = { url ->
+                                    baseUrl = url; showHelp = false; testResult = null
+                                },
+                                onDismiss = { showHelp = false }
+                            )
+                        }
                     } else {
                         Field("MODEL", model, { model = it; testResult = null }, singleLine = true)
                         Spacer(Modifier.height(10.dp))
