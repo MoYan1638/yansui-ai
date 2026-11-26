@@ -68,7 +68,7 @@ fun main(args: Array<String>) {
             input == "/new" -> { history.clear(); println("（新会话）"); continue }
             input == "/memory" -> {
                 val mf = dataDir.resolve("memory/memory.md")
-                println(if (Files.exists(mf)) Files.readString(mf) else "（记忆为空）"); continue
+                println(if (Files.exists(mf)) mf.readTextCompat() else "（记忆为空）"); continue
             }
             input == "/history" -> { println("当前会话 ${history.size} 条消息"); continue }
             input == "/skills" -> {

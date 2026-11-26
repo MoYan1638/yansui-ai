@@ -40,7 +40,7 @@ class BuiltinTools(
             override fun execute(args: JsonObject): String {
                 val p = resolveInRoot(args["path"]!!.jsonPrimitive.content)
                 if (!Files.exists(p)) throw ToolException("文件不存在：$p")
-                return Files.readString(p)
+                return p.readTextCompat()
             }
         },
         object : Tool {
@@ -50,7 +50,7 @@ class BuiltinTools(
             override fun execute(args: JsonObject): String {
                 val p = resolveInRoot(args["path"]!!.jsonPrimitive.content, forWrite = true)
                 p.parent?.createDirectories()
-                Files.writeString(p, args["content"]!!.jsonPrimitive.content)
+                p.writeTextCompat(args["content"]!!.jsonPrimitive.content)
                 return "已写入 ${p.fileName}（${Files.size(p)} 字节）"
             }
         },
@@ -95,7 +95,7 @@ class BuiltinTools(
             override val parameters = """{"type":"object","properties":{}}"""
             override fun execute(args: JsonObject): String {
                 if (!Files.exists(memoryFile)) return "（记忆为空）"
-                return Files.readString(memoryFile)
+                return memoryFile.readTextCompat()
             }
         },
         object : Tool {
@@ -106,12 +106,8 @@ class BuiltinTools(
                 val content = args["content"]!!.jsonPrimitive.content
                 memoryFile.parent?.createDirectories()
                 when (args["mode"]?.jsonPrimitive?.contentOrNull ?: "append") {
-                    "append" -> Files.writeString(
-                        memoryFile, "- $content\n",
-                        java.nio.file.StandardOpenOption.CREATE,
-                        java.nio.file.StandardOpenOption.APPEND
-                    )
-                    "replace" -> Files.writeString(memoryFile, content)
+                    "append" -> memoryFile.appendTextCompat("- $content\n")
+                    "replace" -> memoryFile.writeTextCompat(content)
                 }
                 return "记忆已保存"
             }

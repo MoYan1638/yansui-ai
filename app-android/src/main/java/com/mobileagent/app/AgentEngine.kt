@@ -1,0 +1,177 @@
+package com.mobileagent.app
+
+import android.content.Context
+import com.mobileagent.core.AgentLoop
+import com.mobileagent.core.BuiltinTools
+import com.mobileagent.core.ModelClient
+import com.mobileagent.core.ModelConfig
+import com.mobileagent.core.Skill
+import com.mobileagent.core.SkillLoader
+import com.mobileagent.core.readTextCompat
+import com.mobileagent.core.writeTextCompat
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import kotlin.io.path.createDirectories
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * App 侧引擎封装：把 core 的 AgentLoop 接到 Android 上。
+ * - 技能包随 APK 打包（assets/skills/），首次启动提取到 filesDir，之后每次启动覆盖刷新
+ *   （用户数据在 data/ 下，不在 skills/ 下，覆盖安全）
+ * - 文件/记忆工具沙箱 = 应用私有目录；run_command 在移动端一律拒绝（无 cmd.exe，也绝不该有）
+ * - 会话历史保存在内存（应用生命周期内连续对话），新会话入口在设置页
+ */
+class AgentEngine(context: Context) {
+
+    private val appContext = context.applicationContext
+    val root: Path = appContext.filesDir.toPath()
+    private val skillsDir: Path = root.resolve("skills")
+    private val configPath: Path = root.resolve("config.json")
+    private val memoryDir: Path = root.resolve("data").resolve("memory")
+
+    private val busy = AtomicBoolean(false)
+    private val history = mutableListOf<JsonElement>() // 受 busy 标志保护，单任务串行
+
+    var skills: List<Skill> = emptyList()
+        private set
+    var config: ModelConfig? = null
+        private set
+
+    /** 启动初始化：提取技能 → 解析 → 过闸门 → 读配置。主线程调用一次 */
+    fun initialize() {
+        extractSkillsFromAssets()
+        refreshSkills()
+        config = ModelConfig.load(configPath)
+    }
+
+    fun refreshSkills() {
+        skills = SkillLoader.loadAll(skillsDir).map { SkillLoader.applyGate(it, root) }
+    }
+
+    /** 单轮任务，阻塞执行（调用方放 IO 线程）；事件经回调吐给 UI */
+    fun send(
+        input: String,
+        onToolCall: (name: String, summary: String) -> Unit,
+        onDone: (String) -> Unit,
+        onFailed: (String) -> Unit,
+    ) {
+        val cfg = config
+        if (cfg == null) { onFailed("尚未配置模型（设置页填写 API 信息）"); return }
+        if (!busy.compareAndSet(false, true)) { onFailed("当前有任务正在执行"); return }
+        try {
+            val tools = BuiltinTools(
+                workspaceRoot = root,
+                memoryDir = memoryDir,
+                confirm = { false } // 移动端：命令行执行一律拒绝
+            )
+            val loop = AgentLoop(
+                client = ModelClient(cfg),
+                config = cfg,
+                tools = tools.all,
+                skills = skills,
+                onToolCall = { name, args, result ->
+                    onToolCall(name, summarize(name, args, result))
+                }
+            )
+            onDone(loop.run(input, history))
+        } catch (e: Exception) {
+            onFailed(e.message ?: e.javaClass.simpleName)
+        } finally {
+            busy.set(false)
+        }
+    }
+
+    private fun summarize(name: String, args: String, result: String): String {
+        val ok = !result.startsWith("工具执行失败") && !result.startsWith("工具执行异常")
+        val tail = if (ok) result.lineSequence().firstOrNull()?.take(48) ?: "" else "失败"
+        return "$name(${args.take(40)}) → $tail"
+    }
+
+    /** 保存模型配置；family 按 baseUrl 自动推断 */
+    fun saveConfig(baseUrl: String, apiKey: String, model: String, maxRounds: Int = 15) {
+        val url = baseUrl.trim().trimEnd('/')
+        val family = when {
+            url.contains("deepseek") -> "deepseek"
+            url.contains("minimax") -> "minimax"
+            url.contains("localhost") || url.contains("127.0.0.1") -> "local"
+            else -> "openai"
+        }
+        val cfg = ModelConfig(
+            baseUrl = url,
+            apiKey = apiKey.trim(),
+            model = model.trim(),
+            family = family,
+            maxRounds = maxRounds.coerceIn(1, 40),
+            compressRatio = 0.70
+        )
+        ModelConfig.save(configPath, cfg)
+        config = cfg
+    }
+
+    /** 新会话：清空上下文（长期记忆保留）；任务执行中返回 false */
+    fun newSession(): Boolean {
+        if (busy.get()) return false
+        history.clear()
+        return true
+    }
+
+    /** 清空长期记忆文件；任务执行中返回 false */
+    fun clearMemory(): Boolean {
+        if (busy.get()) return false
+        val f = memoryDir.resolve("memory.md").toFile()
+        return !f.exists() || f.delete()
+    }
+
+    /**
+     * 启用带合规闸门的技能：把闸门字段写为 true 后重新过闸门。
+     * 调用方（UI）必须先让用户显式确认年满 18 周岁。
+     */
+    fun enableGatedSkill(skillName: String): Boolean {
+        val skill = skills.firstOrNull { it.name == skillName } ?: return false
+        val gateFile = skill.dir.resolve("gate.json")
+        if (!Files.exists(gateFile)) return false
+        val gate = Json.parseToJsonElement(gateFile.readTextCompat()).jsonObject
+        val rel = gate["setting"]?.jsonPrimitive?.content ?: return false
+        val field = gate["field"]?.jsonPrimitive?.content ?: return false
+        val settingsPath = root.resolve(rel).normalize()
+        settingsPath.parent?.createDirectories()
+        val existing: JsonObject = if (Files.exists(settingsPath))
+            Json.parseToJsonElement(settingsPath.readTextCompat()).jsonObject else JsonObject(emptyMap())
+        settingsPath.writeTextCompat(setDeep(existing, field.split('.'), true).toString())
+        refreshSkills()
+        return true
+    }
+
+    /** 深合并写嵌套 JSON 字段（合规确认 → {"合规":{"已满18周岁确认":true}}） */
+    private fun setDeep(target: JsonObject, keys: List<String>, value: Boolean): JsonObject {
+        if (keys.isEmpty()) return target
+        if (keys.size == 1) {
+            return JsonObject(target.toMutableMap().apply { put(keys[0], JsonPrimitive(value)) })
+        }
+        val child = (target[keys.first()] as? JsonObject) ?: JsonObject(emptyMap())
+        return JsonObject(target.toMutableMap().apply { put(keys.first(), setDeep(child, keys.drop(1), value)) })
+    }
+
+    /** 从 assets/skills 递归提取技能包（覆盖式，用户数据在 data/ 不受影响） */
+    private fun extractSkillsFromAssets() {
+        fun copy(assetPath: String, target: Path) {
+            val children = appContext.assets.list(assetPath) ?: return
+            if (children.isEmpty()) {
+                target.parent?.createDirectories()
+                appContext.assets.open(assetPath).use { input ->
+                    Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING)
+                }
+            } else {
+                for (child in children) copy("$assetPath/$child", target.resolve(child))
+            }
+        }
+        copy("skills", skillsDir)
+    }
+}

@@ -3,6 +3,7 @@ package com.mobileagent.core
 import kotlinx.serialization.json.*
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.io.path.createDirectories
 
 /**
  * 模型配置（对应自研方案 12.4 的 JSON 字段定案；JVM 阶段 key 落在本地 data/ 目录，
@@ -18,7 +19,7 @@ data class ModelConfig(
 ) {
     companion object {
         fun load(path: Path): ModelConfig? = try {
-            val obj = Json.parseToJsonElement(Files.readString(path)).jsonObject
+            val obj = Json.parseToJsonElement(path.readTextCompat()).jsonObject
             ModelConfig(
                 baseUrl = obj["baseUrl"]!!.jsonPrimitive.content.trimEnd('/'),
                 apiKey = obj["apiKey"]!!.jsonPrimitive.content,
@@ -29,6 +30,19 @@ data class ModelConfig(
             )
         } catch (e: Exception) {
             null
+        }
+
+        /** 持久化配置（App 设置页/首启引导写回用） */
+        fun save(path: Path, c: ModelConfig) {
+            path.parent?.createDirectories()
+            path.writeTextCompat(buildJsonObject {
+                put("baseUrl", c.baseUrl)
+                put("apiKey", c.apiKey)
+                put("model", c.model)
+                put("family", c.family)
+                put("maxRounds", c.maxRounds)
+                put("compressRatio", c.compressRatio)
+            }.toString())
         }
     }
 }

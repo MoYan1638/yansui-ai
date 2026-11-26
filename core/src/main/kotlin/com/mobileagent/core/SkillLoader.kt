@@ -36,7 +36,7 @@ object SkillLoader {
     fun parse(dir: Path): Skill? {
         val md = dir.resolve("SKILL.md")
         if (!Files.exists(md)) return null
-        val text = Files.readString(md)
+        val text = md.readTextCompat()
         val fmMatch = frontMatterRegex.find(text) ?: return null
         val fm = fmMatch.groupValues[1]
         fun field(key: String): String? =
@@ -59,13 +59,13 @@ object SkillLoader {
         val gateFile = skill.dir.resolve("gate.json")
         if (!Files.exists(gateFile)) return skill
         return try {
-            val gate = Json.parseToJsonElement(Files.readString(gateFile)).jsonObject
+            val gate = Json.parseToJsonElement(gateFile.readTextCompat()).jsonObject
             val settingRel = gate["setting"]?.jsonPrimitive?.content ?: return skill
             val field = gate["field"]?.jsonPrimitive?.content ?: return skill
             val notice = gate["notice"]?.jsonPrimitive?.content ?: "该技能需要先完成合规确认才能启用。"
             val settingsPath = workspaceRoot.resolve(settingRel).normalize()
             val confirmed = Files.exists(settingsPath) && runCatching {
-                val json = Json.parseToJsonElement(Files.readString(settingsPath)).jsonObject
+                val json = Json.parseToJsonElement(settingsPath.readTextCompat()).jsonObject
                 field.split('.').fold(json as kotlinx.serialization.json.JsonElement) { acc, key ->
                     (acc as? kotlinx.serialization.json.JsonObject)?.get(key)
                         ?: return@runCatching null
