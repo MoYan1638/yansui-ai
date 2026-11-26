@@ -68,7 +68,6 @@ fun providerKeyOf(baseUrl: String): String {
         u.contains("dashscope") || u.contains("aliyun") -> "qwen"
         u.contains("minimax") -> "minimax"
         u.contains("siliconflow") -> "siliconflow"
-        u.contains("localhost") || u.contains("127.0.0.1") -> "local"
         else -> u.removePrefix("https://").removePrefix("http://").substringBefore('/')
     }
 }
@@ -113,12 +112,6 @@ object ModelPresets {
             baseUrl = "https://api.siliconflow.cn/v1", model = "deepseek-ai/DeepSeek-V3",
             desc = "一个 Key 聚合多款开源模型", window = "64K"
         ),
-        ModelPreset(
-            provider = "local", name = "本地模型（无电脑可选）",
-            baseUrl = "http://127.0.0.1:11434/v1", model = "qwen3:8b",
-            desc = "电脑 Ollama 或手机 Termux+llama.cpp，地址在设置页改", window = "—",
-            badges = listOf("离线")
-        ),
     )
 
     /** 顶栏展示名：命中预设用预设名，否则原样显示模型 id */
@@ -142,13 +135,7 @@ fun ModelPickerSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     fun pick(p: ModelPreset) {
-        if (p.provider == "local") {
-            // 本地部署无 Key：直接切换，Ollama 不校验 Authorization（占位即可）
-            if (engine.switchModel(p, "ollama")) {
-                onSwitched()
-                onDismiss()
-            }
-        } else if (engine.keyFor(p.provider).isNullOrBlank()) {
+        if (engine.keyFor(p.provider).isNullOrBlank()) {
             askKeyFor = p
         } else if (engine.switchModel(p)) {
             onSwitched()
@@ -389,7 +376,7 @@ private fun CustomModelDialog(engine: AgentEngine, onDismiss: () -> Unit, onSave
                 )
                 OutlinedTextField(
                     value = key, onValueChange = { key = it },
-                    label = { Text("API Key（本地 Ollama / LM Studio 可不填）") }, singleLine = true,
+                    label = { Text("API Key") }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)
@@ -399,12 +386,11 @@ private fun CustomModelDialog(engine: AgentEngine, onDismiss: () -> Unit, onSave
         confirmButton = {
             TextButton(
                 onClick = {
-                    val k = key.ifBlank { "ollama" } // 本地服务无需 Key，占位
-                    engine.setProviderKey(providerKeyOf(baseUrl), k)
-                    engine.saveConfig(baseUrl, k, model)
+                    engine.setProviderKey(providerKeyOf(baseUrl), key)
+                    engine.saveConfig(baseUrl, key, model)
                     onSaved()
                 },
-                enabled = baseUrl.isNotBlank() && model.isNotBlank()
+                enabled = baseUrl.isNotBlank() && model.isNotBlank() && key.isNotBlank()
             ) { Text("保存并使用") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }

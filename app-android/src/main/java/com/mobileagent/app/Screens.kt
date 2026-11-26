@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -80,123 +81,6 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /** 方案动效规范的标准缓动曲线 */
 private val AppEasing = CubicBezierEasing(0.22f, 0.8f, 0.3f, 1f)
-private val WarnRed = Color(0xFFE05A5A)
-
-/** 本地模型发现 · OpenAI 兼容端点（llama.cpp llama-server / LM Studio / 新版 Ollama）：GET {base}/models */
-private fun fetchOpenAiModels(base: String): List<String> {
-    val conn = java.net.URI("$base/models").toURL().openConnection() as java.net.HttpURLConnection
-    try {
-        conn.connectTimeout = 5000
-        conn.readTimeout = 8000
-        val body = conn.inputStream.readBytes().toString(Charsets.UTF_8)
-        return Json.parseToJsonElement(body).jsonObject["data"]?.jsonArray
-            ?.mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.contentOrNull } ?: emptyList()
-    } finally {
-        conn.disconnect()
-    }
-}
-
-
-/**
- * 本地部署帮助弹窗：两条路线的命令，逐条可复制；
- * 底部一键回填对应的 BASE URL，减少手抄。
- */
-@Composable
-private fun LocalHelpDialog(onPickUrl: (String) -> Unit, onDismiss: () -> Unit) {
-    val ctx = androidx.compose.ui.platform.LocalContext.current
-    fun copy(text: String) {
-        val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-            as android.content.ClipboardManager
-        cm.setPrimaryClip(android.content.ClipData.newPlainText("cmd", text))
-    }
-
-    @Composable
-    fun Cmd(text: String) {
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text,
-                    style = MonoStyle,
-                    fontSize = 10.5.sp,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    "复制",
-                    style = MonoStyle,
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clickable { copy(text) }
-                        .padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
-                )
-            }
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("本地模型 · 一步步命令") },
-        text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                item {
-                    Text("路线① 有电脑 · Ollama", style = MonoStyle, fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary)
-                }
-                item { Cmd("电脑命令行：winget install Ollama.Ollama") }
-                item { Cmd("电脑命令行：setx OLLAMA_HOST 0.0.0.0") }
-                item { Cmd("电脑命令行：ollama pull qwen3:8b") }
-                item {
-                    TextButton(onClick = { onPickUrl("http://192.168.1.5:11434/v1") }) {
-                        Text("↳ 填这个地址（改成你的电脑 IP）")
-                    }
-                }
-                item { HorizontalDivider(color = MaterialTheme.colorScheme.outline) }
-                item {
-                    Text("路线② 没电脑 · Termux", style = MonoStyle, fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary)
-                }
-                item { Cmd("Termux：pkg install tur-repo -y") }
-                item { Cmd("Termux：pkg install llamacpp -y") }
-                item { Cmd("Termux：llama-server -m /sdcard/Download/模型.gguf -c 4096 --port 8080") }
-                item {
-                    Text(
-                        "模型 .gguf 文件从 ModelScope/HuggingFace 下载后放手机 Download；模型越小越快（1.5B～4B）",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                item {
-                    TextButton(onClick = { onPickUrl("http://127.0.0.1:8080/v1") }) {
-                        Text("↳ 填这个地址")
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("知道了") } }
-    )
-}
-
-/** 本地模型发现 · Ollama 原生端点：GET {base}/api/tags */
-private fun fetchOllamaTags(base: String): List<String> {
-    val conn = java.net.URI("$base/api/tags").toURL().openConnection() as java.net.HttpURLConnection
-    try {
-        conn.connectTimeout = 5000
-        conn.readTimeout = 8000
-        val body = conn.inputStream.readBytes().toString(Charsets.UTF_8)
-        return Json.parseToJsonElement(body).jsonObject["models"]?.jsonArray
-            ?.mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.contentOrNull } ?: emptyList()
-    } finally {
-        conn.disconnect()
-    }
-}
 
 // ---------- 通用小组件（原型样式还原） ----------
 
@@ -316,15 +200,12 @@ fun AppScaffold(engine: AgentEngine) {
 @Composable
 fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
     var step by rememberSaveable { mutableIntStateOf(1) }
-    // 步骤2/3 的状态
-    var useLocal by remember { mutableStateOf(false) }
+    // 步骤3 的状态（纯 API 接入）
     var baseUrl by remember { mutableStateOf("https://api.deepseek.com/v1") }
     var model by remember { mutableStateOf("deepseek-chat") }
     var apiKey by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var testResult by remember { mutableStateOf<String?>(null) }
-    var installedModels by remember { mutableStateOf<List<String>>(emptyList()) } // Ollama /api/tags 发现的已装模型
-    var fetchTip by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -371,133 +252,28 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
         ) { s ->
             when (s) {
                 1 -> OnboardingCover()
-                2 -> OnboardingAccess(useLocal) { local ->
-                    useLocal = local
-                    error = null
-                    // 本地部署：无 Key，走电脑局域网地址，模型由发现/手填给出
-                    baseUrl = if (local) "" else "https://api.deepseek.com/v1"
-                    model = if (local) "" else "deepseek-chat"
-                    installedModels = emptyList(); fetchTip = null; testResult = null
-                }
+                2 -> OnboardingApiGuide()
                 3 -> Column {
                     Text("STEP 2/3 · 配置", style = MonoStyle, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        if (useLocal) "连接本地模型" else "填入接入信息",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
+                    Text("填入接入信息", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
                     Spacer(Modifier.height(4.dp))
-                    var showHelp by remember { mutableStateOf(false) }
                     Text(
-                        if (useLocal)
-                            "两种跑法，都不需要 API Key：\n① 有电脑：装 Ollama，设 OLLAMA_HOST=0.0.0.0，填电脑局域网地址（例 192.168.1.5:11434/v1）；\n② 没电脑：手机装 Termux，在里面装 llama.cpp 并启动 llama-server（例 127.0.0.1:8080/v1）。手机只能跑 1.5B～4B 量化小模型，速度和续航有限。\n模型在对应平台拉取/导入，这里自动发现已装的。"
-                        else
-                            "密钥只保存在应用私有目录，不上传、不进任何云端。",
+                        "密钥只保存在应用私有目录，不上传、不进任何云端。还没建 Key？上一步有各平台开通教程。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (useLocal) {
-                        TextButton(onClick = { showHelp = true }) {
-                            Text("查看一步步命令（点开复制）", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    Spacer(Modifier.height(if (useLocal) 4.dp else 20.dp))
+                    Spacer(Modifier.height(20.dp))
                     Field("BASE URL", baseUrl, {
                         baseUrl = it
-                        if (!useLocal) model = if (it.contains("11434")) "qwen3:8b" else "deepseek-chat"
+                        model = if (it.contains("11434")) "qwen3:8b" else "deepseek-chat"
                         testResult = null
-                    }, singleLine = true,
-                        hint = if (useLocal) "电脑：192.168.x.x:11434/v1 · 手机：127.0.0.1:8080/v1" else null)
+                    }, singleLine = true)
                     Spacer(Modifier.height(10.dp))
-
-                    if (useLocal) {
-                        // 已装模型发现：先试 OpenAI 兼容 /v1/models（llama.cpp / LM Studio / 新版 Ollama），失败回退 Ollama 原生 /api/tags
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedButton(
-                                onClick = {
-                                    fetchTip = "获取中…"
-                                    val base = baseUrl.trim().trimEnd('/')
-                                    Thread {
-                                        val names: List<String> = try {
-                                            fetchOpenAiModels(base)
-                                        } catch (e: Exception) {
-                                            try {
-                                                fetchOllamaTags(base)
-                                            } catch (e2: Exception) {
-                                                installedModels = emptyList()
-                                                fetchTip = "连接失败：${e.message?.take(80)}（检查地址 / 服务是否在跑）"
-                                                return@Thread
-                                            }
-                                        }
-                                        installedModels = names
-                                        fetchTip = if (names.isEmpty()) "未发现已装模型（先拉取 / 导入模型）"
-                                        else "发现 ${names.size} 个已装模型，点选一个"
-                                    }.start()
-                                },
-                                enabled = baseUrl.isNotBlank(),
-                                shape = RoundedCornerShape(8.dp)
-                            ) { Text("获取已装模型") }
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                "无 Key，直连本地服务",
-                                style = MonoStyle, fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        fetchTip?.let {
-                            Spacer(Modifier.height(6.dp))
-                            Text(it, style = MonoStyle, fontSize = 10.5.sp,
-                                color = if (it.startsWith("发现")) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (installedModels.isNotEmpty()) {
-                            Spacer(Modifier.height(8.dp))
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.horizontalScroll(rememberScrollState())
-                            ) {
-                                installedModels.forEach { name ->
-                                    val sel = name == model
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                                        else MaterialTheme.colorScheme.surface,
-                                        border = BorderStroke(
-                                            1.dp,
-                                            if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                                        ),
-                                        modifier = Modifier.clickable { model = name; testResult = null }
-                                    ) {
-                                        Text(
-                                            name, style = MonoStyle, fontSize = 11.sp,
-                                            color = if (sel) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.onSurface,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        Field("MODEL", model, { model = it; testResult = null }, singleLine = true,
-                            hint = "可手填（对应 ollama 里的模型名）")
-
-                        // 本地部署帮助：两条路线的可复制命令
-                        if (showHelp) {
-                            LocalHelpDialog(
-                                onPickUrl = { url ->
-                                    baseUrl = url; showHelp = false; testResult = null
-                                },
-                                onDismiss = { showHelp = false }
-                            )
-                        }
-                    } else {
-                        Field("MODEL", model, { model = it; testResult = null }, singleLine = true)
-                        Spacer(Modifier.height(10.dp))
-                        Field("API KEY", apiKey, { apiKey = it; error = null; testResult = null }, singleLine = true,
-                            hint = "还没有？去对应平台控制台获取")
-                    }
+                    Field("MODEL", model, { model = it; testResult = null }, singleLine = true)
+                    Spacer(Modifier.height(10.dp))
+                    Field("API KEY", apiKey, { apiKey = it; error = null; testResult = null }, singleLine = true,
+                        hint = "还没有？上一步有各平台开通教程")
                     testResult?.let {
                         Spacer(Modifier.height(8.dp))
                         Text(it, style = MonoStyle, fontSize = 11.sp,
@@ -512,9 +288,7 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                         onClick = {
                             testResult = "测试中…"
                                 val cfg = com.mobileagent.core.ModelConfig(
-                                    baseUrl = baseUrl.trim().trimEnd('/'),
-                                    apiKey = apiKey.ifBlank { "ollama" }, // 本地 Ollama 无 Key，占位即可
-                                    model = model,
+                                    baseUrl = baseUrl.trim().trimEnd('/'), apiKey = apiKey, model = model,
                                     family = "openai", maxRounds = 1, compressRatio = 0.7
                                 )
                                 Thread {
@@ -533,7 +307,7 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                                     testResult = r
                                 }.start()
                         },
-                        enabled = baseUrl.isNotBlank() && model.isNotBlank() && (useLocal || apiKey.isNotBlank()),
+                        enabled = baseUrl.isNotBlank() && model.isNotBlank() && apiKey.isNotBlank(),
                         shape = RoundedCornerShape(8.dp)
                     ) { Text("测试连接") }
                 }
@@ -556,15 +330,12 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                 onClick = {
                     when (step) {
                         3 -> {
-                            if (baseUrl.isBlank() || model.isBlank() || (!useLocal && apiKey.isBlank())) {
-                                error = if (useLocal)
-                                    "地址和模型名都要填（先在电脑上装好 Ollama 并拉取模型）"
-                                else
-                                    "三项都要填（Key 在各模型平台的控制台获取）"
+                            if (apiKey.isBlank() || baseUrl.isBlank() || model.isBlank()) {
+                                error = "三项都要填（Key 在各模型平台的控制台获取）"
                             } else step = 4
                         }
                         4 -> {
-                            engine.saveConfig(baseUrl, apiKey.ifBlank { "ollama" }, model)
+                            engine.saveConfig(baseUrl, apiKey, model)
                             onDone()
                         }
                         else -> step++
@@ -622,73 +393,126 @@ private fun OnboardingCover() {
     }
 }
 
-/** 步骤2 · 选接入方式 */
+/** API 供应商开通指引（引导步骤2 与设置页共用） */
+private data class ApiGuide(
+    val name: String,
+    val url: String,
+    val steps: String,
+    val tip: String,
+    val recommended: Boolean = false
+)
+
+private val apiGuides = listOf(
+    ApiGuide(
+        "DeepSeek", "https://platform.deepseek.com",
+        "① 注册账号并充值（10 元起，能用很久）\n② 左侧「API keys」→「创建 API key」\n③ 复制 Key（只显示一次，记得保存）",
+        "deepseek-chat 便宜够用，工具调用稳", recommended = true
+    ),
+    ApiGuide(
+        "硅基流动", "https://cloud.siliconflow.cn",
+        "① 注册（送免费额度）\n② 「API 密钥」→「新建 API 密钥」",
+        "一个 Key 聚合多款开源模型"
+    ),
+    ApiGuide(
+        "智谱 GLM", "https://open.bigmodel.cn",
+        "① 注册并实名 → 控制台\n② 「API 密钥」→ 创建",
+        "中文理解强，新用户有免费额度"
+    ),
+    ApiGuide(
+        "Kimi · 月之暗面", "https://platform.moonshot.cn",
+        "① 注册 →「API Key 管理」→ 新建\n② 充值后可用",
+        "长上下文大"
+    ),
+    ApiGuide(
+        "通义千问 · 阿里云", "https://bailian.console.aliyun.com",
+        "① 开通百炼服务\n② 「API-KEY」→ 创建",
+        "国内延迟低，新用户有免费额度"
+    ),
+    ApiGuide(
+        "MiniMax", "https://platform.minimaxi.com",
+        "① 注册 →「接口密钥」→ 创建",
+        "多模态与语音见长"
+    ),
+)
+
+/** 打开浏览器访问官网；无浏览器时静默忽略（只建议不强制） */
+private fun openUrl(ctx: android.content.Context, url: String) {
+    runCatching {
+        ctx.startActivity(
+            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+}
+
+/** 步骤2 · API 开通指引：每个平台给出开通步骤、特点与官网入口 */
 @Composable
-private fun OnboardingAccess(useLocal: Boolean, onPick: (Boolean) -> Unit) {
-    Column {
+private fun OnboardingApiGuide() {
+    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         Text("STEP 1/3 · 模型接入", style = MonoStyle, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(8.dp))
-        Text("Agent 用哪个大脑？", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
+        Text(
+            "还没有 API Key？先建一个",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onBackground
+        )
         Spacer(Modifier.height(4.dp))
         Text(
-            "两种接入方式，之后随时可以在设置里换。",
+            "Agent 需要「OpenAI 兼容」的模型 API（跑在云端，手机零负担）。选一家平台建 Key，下一步填进去即可。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(Modifier.height(20.dp))
-        AccessOption(
-            sel = !useLocal,
-            name = "API 接入", tag = "推荐", tagDim = false,
-            desc = "填入任意兼容 OpenAI 协议的服务（DeepSeek、智谱等）。模型在云端跑，手机零负担，能力强。"
-        ) { onPick(false) }
-        Spacer(Modifier.height(10.dp))
-        AccessOption(
-            sel = useLocal,
-            name = "本地部署", tag = "进阶", tagDim = true,
-            desc = "连接本机或局域网的 Ollama / LM Studio。数据不出设备，但要求较高配置，速度与电量有代价。"
-        ) { onPick(true) }
-        if (useLocal) {
-            Spacer(Modifier.height(12.dp))
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, WarnRed.copy(alpha = 0.5f))
-            ) {
-                Text(
-                    "本地模式提示：7B 级模型建议 12GB+ 内存设备；生成速度约为 API 的 1/5~1/10，长时间运行显著耗电。",
-                    style = MaterialTheme.typography.bodySmall,
-                    lineHeight = 20.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(12.dp)
-                )
-            }
+        Spacer(Modifier.height(14.dp))
+        apiGuides.forEach { g ->
+            ApiProviderCard(g)
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
 
 @Composable
-private fun AccessOption(
-    sel: Boolean, name: String, tag: String, tagDim: Boolean, desc: String, onClick: () -> Unit
-) {
+private fun ApiProviderCard(g: ApiGuide) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(
-            1.dp,
-            if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.width(8.dp))
-                TagChip(tag, dim = tagDim)
+                Text(g.name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                if (g.recommended) {
+                    Spacer(Modifier.width(8.dp))
+                    TagChip("推荐")
+                }
             }
             Spacer(Modifier.height(6.dp))
-            Text(desc, style = MaterialTheme.typography.bodySmall, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                g.steps,
+                style = MaterialTheme.typography.bodySmall,
+                lineHeight = 19.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    g.tip,
+                    style = MonoStyle,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    "打开官网 ↗",
+                    style = MonoStyle,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clickable { openUrl(ctx, g.url) }
+                        .padding(4.dp)
+                )
+            }
         }
     }
 }
@@ -913,7 +737,7 @@ fun SettingsScreen(engine: AgentEngine) {
     var apiKey by remember(cfg) { mutableStateOf(cfg?.apiKey ?: "") }
     var savedTip by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var localMode by remember { mutableStateOf(baseUrl.contains("11434") || baseUrl.contains("localhost")) }
+    var showGuide by remember { mutableStateOf(false) }
 
     // Shizuku（可选能力，只建议不强制）
     var shizukuTick by remember { mutableIntStateOf(0) }
@@ -948,21 +772,8 @@ fun SettingsScreen(engine: AgentEngine) {
 
         LazyColumn(contentPadding = PaddingValues(bottom = 20.dp)) {
             item {
-                SectionLabel("接入方式")
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AccessOption(
-                        sel = !localMode, name = "API 接入", tag = "当前", tagDim = false,
-                        desc = "云端模型，能力强、速度快"
-                    ) { localMode = false }
-                    AccessOption(
-                        sel = localMode, name = "本地部署", tag = "进阶", tagDim = true,
-                        desc = "电脑 Ollama / 手机 Termux + llama.cpp，无 Key"
-                    ) {
-                        localMode = true
-                        baseUrl = ""
-                        model = ""
-                        savedTip = false
-                    }
+                TextButton(onClick = { showGuide = true }) {
+                    Text("？如何获取 API Key · 各平台开通教程", style = MaterialTheme.typography.bodySmall)
                 }
 
                 SectionLabel("供应商")
@@ -1005,42 +816,13 @@ fun SettingsScreen(engine: AgentEngine) {
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(Modifier.padding(14.dp)) {
-                        Field("BASE URL", baseUrl, { baseUrl = it; savedTip = false }, singleLine = true,
-                            hint = if (localMode) "电脑：192.168.x.x:11434/v1 · 手机：127.0.0.1:8080/v1" else null)
+                        Field("BASE URL", baseUrl, { baseUrl = it; savedTip = false }, singleLine = true)
                         Spacer(Modifier.height(10.dp))
                         Field("MODEL", model, { model = it; savedTip = false }, singleLine = true,
-                            hint = if (localMode) "可手填，或用下方按钮发现已装模型"
-                            else "按模型家族自动匹配提示词模板（deepseek / minimax / openai）")
-                        if (localMode) {
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedButton(
-                                onClick = {
-                                    val base = baseUrl.trim().trimEnd('/')
-                                    Thread {
-                                        val names: List<String> = try {
-                                            fetchOpenAiModels(base)
-                                        } catch (e: Exception) {
-                                            try { fetchOllamaTags(base) } catch (e2: Exception) { emptyList() }
-                                        }
-                                        if (names.isNotEmpty()) model = names.first()
-                                    }.start()
-                                },
-                                enabled = baseUrl.isNotBlank(),
-                                shape = RoundedCornerShape(8.dp)
-                            ) { Text("发现已装模型（取第一个）") }
-                        }
-                        if (!localMode) {
-                            Spacer(Modifier.height(10.dp))
-                            Field("API KEY", apiKey, { apiKey = it; savedTip = false }, singleLine = true,
-                                hint = "存储于应用私有目录，不明文上传")
-                        } else {
-                            Spacer(Modifier.height(10.dp))
-                            Text(
-                                "本地部署无需 API Key，模型经局域网直连",
-                                style = MonoStyle, fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                            hint = "按模型家族自动匹配提示词模板（deepseek / minimax / openai）")
+                        Spacer(Modifier.height(10.dp))
+                        Field("API KEY", apiKey, { apiKey = it; savedTip = false }, singleLine = true,
+                            hint = "存储于应用私有目录，不明文上传")
                     }
                 }
 
@@ -1052,10 +834,10 @@ fun SettingsScreen(engine: AgentEngine) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Button(
                         onClick = {
-                            if (baseUrl.isBlank() || model.isBlank() || (!localMode && apiKey.isBlank())) {
-                                error = if (localMode) "地址和模型名都要填" else "三项都不能为空"
+                            if (apiKey.isBlank() || baseUrl.isBlank() || model.isBlank()) {
+                                error = "三项都不能为空"
                             } else {
-                                engine.saveConfig(baseUrl, apiKey.ifBlank { "ollama" }, model)
+                                engine.saveConfig(baseUrl, apiKey, model)
                                 savedTip = true; error = null
                             }
                         },
@@ -1293,6 +1075,20 @@ fun SettingsScreen(engine: AgentEngine) {
                 ) { Text("添加") }
             },
             dismissButton = { TextButton(onClick = { showAddTask = false }) { Text("取消") } }
+        )
+    }
+
+    // API Key 开通教程（与引导步骤2 共用同一份供应商指引）
+    if (showGuide) {
+        AlertDialog(
+            onDismissRequest = { showGuide = false },
+            title = { Text("API Key · 开通教程") },
+            text = {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    apiGuides.forEach { g -> item { ApiProviderCard(g) } }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showGuide = false }) { Text("关闭") } }
         )
     }
 }
