@@ -34,7 +34,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -206,6 +205,12 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
     var apiKey by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var testResult by remember { mutableStateOf<String?>(null) }
+    var showGuide by remember { mutableStateOf(false) }
+
+    // API 开通指引弹窗（「先建一个」入口）
+    if (showGuide) {
+        ApiGuideDialog(onDismiss = { showGuide = false })
+    }
 
     Column(
         modifier = Modifier
@@ -220,13 +225,13 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Spacer(Modifier.weight(1f))
-            if (step < 4) TextButton(onClick = onDone) { Text("跳过") }
+            if (step < 3) TextButton(onClick = onDone) { Text("跳过") }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center
         ) {
-            repeat(4) { i ->
+            repeat(3) { i ->
                 Box(
                     modifier = Modifier
                         .padding(horizontal = 4.dp)
@@ -252,14 +257,13 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
         ) { s ->
             when (s) {
                 1 -> OnboardingCover()
-                2 -> OnboardingApiGuide()
-                3 -> Column {
-                    Text("STEP 2/3 · 配置", style = MonoStyle, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                2 -> Column {
+                    Text("STEP 1/2 · 选择模型 API", style = MonoStyle, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(8.dp))
                     Text("填入接入信息", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "密钥只保存在应用私有目录，不上传、不进任何云端。还没建 Key？上一步有各平台开通教程。",
+                        "密钥只保存在应用私有目录，不上传、不进任何云端。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -273,7 +277,7 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                     Field("MODEL", model, { model = it; testResult = null }, singleLine = true)
                     Spacer(Modifier.height(10.dp))
                     Field("API KEY", apiKey, { apiKey = it; error = null; testResult = null }, singleLine = true,
-                        hint = "还没有？上一步有各平台开通教程")
+                        hint = "任意 OpenAI 兼容接口均可")
                     testResult?.let {
                         Spacer(Modifier.height(8.dp))
                         Text(it, style = MonoStyle, fontSize = 11.sp,
@@ -283,7 +287,11 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                         Spacer(Modifier.height(8.dp))
                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(10.dp))
+                    TextButton(onClick = { showGuide = true }) {
+                        Text("还没有 API Key？先建一个 ↗")
+                    }
+                    Spacer(Modifier.height(4.dp))
                     OutlinedButton(
                         onClick = {
                             testResult = "测试中…"
@@ -329,12 +337,12 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
             Button(
                 onClick = {
                     when (step) {
-                        3 -> {
+                        2 -> {
                             if (apiKey.isBlank() || baseUrl.isBlank() || model.isBlank()) {
                                 error = "三项都要填（Key 在各模型平台的控制台获取）"
-                            } else step = 4
+                            } else step = 3
                         }
-                        4 -> {
+                        3 -> {
                             engine.saveConfig(baseUrl, apiKey, model)
                             onDone()
                         }
@@ -342,7 +350,7 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                     }
                 },
                 shape = RoundedCornerShape(8.dp)
-            ) { Text(if (step == 4) "完成并进入" else "下一步") }
+            ) { Text(if (step == 3) "完成并进入" else "下一步") }
         }
         Spacer(Modifier.height(18.dp))
     }
@@ -385,7 +393,7 @@ private fun OnboardingCover() {
         )
         Spacer(Modifier.height(22.dp))
         Text(
-            "引导共 4 步 · 模型接入 → 配置 → 权限 → 完成 · 约 1 分钟",
+            "引导共 3 步 · 选模型 API → 权限说明 → 完成 · 约 1 分钟",
             style = MonoStyle,
             fontSize = 10.5.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -445,30 +453,26 @@ private fun openUrl(ctx: android.content.Context, url: String) {
     }
 }
 
-/** 步骤2 · API 开通指引：每个平台给出开通步骤、特点与官网入口 */
+/** API 开通指引弹窗：引导页「先建一个」与设置页共用 */
 @Composable
-private fun OnboardingApiGuide() {
-    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-        Text("STEP 1/3 · 模型接入", style = MonoStyle, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "还没有 API Key？先建一个",
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "Agent 需要「OpenAI 兼容」的模型 API（跑在云端，手机零负担）。选一家平台建 Key，下一步填进去即可。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(14.dp))
-        apiGuides.forEach { g ->
-            ApiProviderCard(g)
-            Spacer(Modifier.height(8.dp))
-        }
-        CustomApiCard()
-    }
+private fun ApiGuideDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("API Key · 开通教程") },
+        text = {
+            Text(
+                "Agent 需要「OpenAI 兼容」的模型 API（跑在云端，手机零负担）。选一家平台建 Key，回来填入即可；已有任意兼容接口的，直接填自定义。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 10.dp)
+            )
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                apiGuides.forEach { g -> item { ApiProviderCard(g) } }
+                item { CustomApiCard() }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+    )
 }
 
 /** 自定义 API 卡片：已有的任意 OpenAI 兼容接口都能接，不局限于内置名单 */
@@ -555,7 +559,7 @@ private fun ApiProviderCard(g: ApiGuide) {
 @Composable
 private fun OnboardingPerms() {
     Column {
-        Text("STEP 3/3 · 权限", style = MonoStyle, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+        Text("STEP 2/2 · 权限", style = MonoStyle, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(8.dp))
         Text("基础权限清单", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
         Spacer(Modifier.height(4.dp))
@@ -1112,18 +1116,8 @@ fun SettingsScreen(engine: AgentEngine) {
         )
     }
 
-    // API Key 开通教程（与引导步骤2 共用同一份供应商指引）
+    // API 开通教程（与引导页「先建一个」共用同一份指引）
     if (showGuide) {
-        AlertDialog(
-            onDismissRequest = { showGuide = false },
-            title = { Text("API Key · 开通教程") },
-            text = {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    apiGuides.forEach { g -> item { ApiProviderCard(g) } }
-                    item { CustomApiCard() }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showGuide = false }) { Text("关闭") } }
-        )
+        ApiGuideDialog(onDismiss = { showGuide = false })
     }
 }
