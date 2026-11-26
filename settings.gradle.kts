@@ -1,5 +1,13 @@
 rootProject.name = "mobile-agent"
 
+pluginManagement {
+    repositories {
+        google() // AGP
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
 dependencyResolutionManagement {
     repositories {
         mavenCentral()
@@ -7,6 +15,4 @@ dependencyResolutionManagement {
     }
 }
 
-include(":core")
-// M2: include(":skill-loader")
-// M3: include(":app-android")
+include(":core", ":app-android")
