@@ -488,6 +488,7 @@ private fun LiquidNavBar(
 
         // ② 隐藏的强调色同款图层（不显示、只录进 backdrop 供透镜取样）：
         //    alpha 在 layerBackdrop 外层 → 记录的是全色内容；染色 graphicsLayer 在内层 → 记录的是染色后内容
+        //    图标和文字都要录——指示器盖在真实标签上方，透镜里必须画得出文字，否则滑到哪哪的标题就被玻璃吃掉
         Row(
             modifier = Modifier
                 .alpha(0f)
@@ -498,7 +499,7 @@ private fun LiquidNavBar(
                 .graphicsLayer(colorFilter = ColorFilter.tint(accent)),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            items.forEach { (_, icon, _) ->
+            items.forEach { (label, icon, _) ->
                 Box(
                     modifier = Modifier.weight(1f).padding(vertical = 7.dp),
                     contentAlignment = Alignment.Center
@@ -506,7 +507,7 @@ private fun LiquidNavBar(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(icon, contentDescription = null, tint = Color.Black, modifier = Modifier.size(21.dp))
                         Spacer(Modifier.height(2.dp))
-                        Text(" ", fontSize = 10.5.sp, color = Color.Black)
+                        Text(label, fontSize = 10.5.sp, color = Color.Black, fontWeight = FontWeight.Medium)
                     }
                 }
             }
