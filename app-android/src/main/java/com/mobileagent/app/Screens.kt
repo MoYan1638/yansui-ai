@@ -3,7 +3,9 @@ package com.mobileagent.app
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -17,6 +19,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,8 +53,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -69,7 +70,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -160,10 +167,17 @@ private fun Field(
 fun AppScaffold(engine: AgentEngine) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
 
+    // 页面底色带一层极淡的强调色晕染（底部最浓）：柔光玻璃需要"有东西可折"，纯平色玻璃会显脏
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(
+                Brush.verticalGradient(
+                    0.0f to MaterialTheme.colorScheme.background,
+                    0.62f to MaterialTheme.colorScheme.background,
+                    1.0f to MaterialTheme.colorScheme.primary.copy(alpha = 0.075f)
+                )
+            )
             .systemBarsPadding()
     ) {
         AnimatedContent(
@@ -185,15 +199,99 @@ fun AppScaffold(engine: AgentEngine) {
             }
         }
 
-        NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-            val tabs = listOf("会话" to Icons.Filled.Home, "技能" to Icons.AutoMirrored.Filled.List, "设置" to Icons.Filled.Settings)
-            tabs.forEachIndexed { i, (label, icon) ->
-                NavigationBarItem(
-                    selected = tab == i,
-                    onClick = { tab = i },
-                    icon = { Icon(icon, contentDescription = label) },
-                    label = { Text(label) }
-                )
+        GlassNavBar(tab) { tab = it }
+    }
+}
+
+/** 底部导航：悬浮柔光玻璃胶囊（选中项内嵌磨砂小胶囊 + 强调色柔光） */
+@Composable
+private fun GlassNavBar(tab: Int, onSelect: (Int) -> Unit) {
+    val dark = isSystemInDarkTheme()
+    val haptics = LocalHapticFeedback.current
+    val items = listOf(
+        Triple("会话", Icons.Filled.Home, 0),
+        Triple("技能", Icons.AutoMirrored.Filled.List, 1),
+        Triple("设置", Icons.Filled.Settings, 2)
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 10.dp)
+            .glass(shape = RoundedCornerShape(26.dp), elevation = 18.dp)
+            .padding(vertical = 5.dp, horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        items.forEach { (label, icon, idx) ->
+            val selected = tab == idx
+            val sel by animateFloatAsState(
+                targetValue = if (selected) 1f else 0f,
+                animationSpec = tween(240, easing = AppEasing),
+                label = "navSel$idx"
+            )
+            val tint by animateColorAsState(
+                targetValue = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                animationSpec = tween(220, easing = AppEasing),
+                label = "navTint$idx"
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable {
+                        if (!selected) {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSelect(idx)
+                        }
+                    }
+                    .padding(vertical = 7.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                // 选中态：内部磨砂胶囊，向外一层强调色柔光
+                if (sel > 0.01f) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .padding(horizontal = 9.dp)
+                            .graphicsLayer {
+                                alpha = sel
+                                scaleX = 0.90f + 0.10f * sel
+                                scaleY = 0.90f + 0.10f * sel
+                            }
+                            .shadow(
+                                elevation = 6.dp,
+                                shape = RoundedCornerShape(16.dp),
+                                clip = false,
+                                ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                            )
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                if (dark) Color.White.copy(alpha = 0.11f)
+                                else Color.White.copy(alpha = 0.90f)
+                            )
+                    )
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        icon,
+                        contentDescription = label,
+                        tint = tint,
+                        modifier = Modifier
+                            .size(21.dp)
+                            .graphicsLayer {
+                                scaleX = 1f + 0.06f * sel
+                                scaleY = 1f + 0.06f * sel
+                            }
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        label,
+                        fontSize = 10.5.sp,
+                        color = tint,
+                        fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal
+                    )
+                }
             }
         }
     }

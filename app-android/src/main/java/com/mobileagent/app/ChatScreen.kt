@@ -27,6 +27,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +67,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
@@ -750,13 +752,16 @@ fun ChatScreen(
             }
         }
 
-        // 消息区
-        LazyColumn(
-            state = listState,
+        // 消息区：消息从底部玻璃条下方滚过，被渐隐遮罩收口，才有"透过玻璃"的观感
+        Box(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                .fillMaxWidth()
+        ) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 150.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (items.isEmpty()) {
@@ -890,12 +895,28 @@ fun ChatScreen(
             }
         }
 
-        // 输入栏（原型：input-chip + 方形 accent 发送键 + skill-hint）
+        // 底部渐隐遮罩：文字滑到玻璃条附近自然淡掉，玻璃才"像玻璃"而不是半透明色块
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(168.dp)
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to Color.Transparent,
+                        0.60f to MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
+                        1.0f to MaterialTheme.colorScheme.background
+                    )
+                )
+        )
+
+        // 输入栏：悬浮柔光玻璃胶囊（原型：input-chip + 方形 accent 发送键 + skill-hint）
         Column(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .padding(start = 10.dp, end = 10.dp, bottom = 8.dp)
+                .glass(shape = RoundedCornerShape(22.dp), elevation = 16.dp)
         ) {
             // 追问时挂的引用：上方给两个快捷追问（学豆包：解释一下 / 详细展开）；随引用条一起滑入滑出
             var lastQuote by remember { mutableStateOf("") }
@@ -906,31 +927,27 @@ fun ChatScreen(
                 exit = fadeOut(tween(130)) + shrinkVertically(tween(200, easing = FastOutSlowInEasing))
             ) {
                 Row(
-                    modifier = Modifier.padding(start = 2.dp, bottom = 6.dp),
+                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 9.dp, bottom = 1.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     listOf("解释一下", "详细展开").forEach { s ->
                         Surface(
                             onClick = { input = s },
                             shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.30f))
                         ) {
                             Text(
                                 "$s →",
                                 fontSize = 11.5.sp,
-                                color = MaterialTheme.colorScheme.onSurface,
+                                color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
                             )
                         }
                     }
                 }
             }
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-            ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     // 引用条：被引用的上文 + × 取消引用；滑入滑出动画
                     AnimatedVisibility(
@@ -1021,6 +1038,13 @@ fun ChatScreen(
                         else MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .padding(4.dp)
+                            .shadow(
+                                elevation = if (running || input.isBlank()) 0.dp else 9.dp,
+                                shape = RoundedCornerShape(9.dp),
+                                clip = false,
+                                ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+                            )
                             .graphicsLayer {
                                 scaleX = sendScale
                                 scaleY = sendScale
@@ -1041,7 +1065,7 @@ fun ChatScreen(
             val hint = activeSkillNames()
             if (hint.isNotBlank()) {
                 Row(
-                    modifier = Modifier.padding(start = 4.dp, top = 7.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 1.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
@@ -1058,6 +1082,7 @@ fun ChatScreen(
                     )
                 }
             }
+        }
         }
     }
 
