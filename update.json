@@ -1,7 +1,7 @@
 {
-  "version": "0.8.11",
-  "code": 47,
-  "notes": "底部导航新增长按跟手交互：按住导航栏任意位置，玻璃透镜指示器实时贴着手指滑动，松手后就近停靠并切换页面，全程带触感反馈。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.11/yansui-ai-0.8.11-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.11/yansui-ai-0.8.11-release.apk"
+  "version": "0.8.12",
+  "code": 48,
+  "notes": "修复长按松手回跳：松手瞬间指示器从手指当前位置无缝过渡到就近标签停靠，不再弹回原点。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.12/yansui-ai-0.8.12-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.12/yansui-ai-0.8.12-release.apk"
 }
