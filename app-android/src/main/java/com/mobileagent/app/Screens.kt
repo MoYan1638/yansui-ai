@@ -367,7 +367,7 @@ private fun LiquidNavBar(
     // 玻璃底色：给模糊结果铺一层薄底，与页面同族色
     val containerColor =
         if (dark) Color(0xFF121418).copy(alpha = 0.40f)
-        else Color(0xFFFAFAFA).copy(alpha = 0.40f)
+        else Color(0xFFFAFAFA).copy(alpha = 0.46f)
     val items = listOf(
         Triple("会话", Icons.Filled.Home, 0),
         Triple("技能", Icons.AutoMirrored.Filled.List, 1),
@@ -391,7 +391,8 @@ private fun LiquidNavBar(
         val tabsBackdrop = rememberLayerBackdrop()
         val indicatorBackdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop)
 
-        // ① 外层玻璃胶囊：实时模糊折射页面内容
+        // ① 外层玻璃胶囊：实时模糊折射页面内容；高光+内阴影定义棱边——
+        //    背后是纯色时（聊天页静止、设置页空白）没有内容可模糊，全靠这道棱边才看得出是玻璃
         Row(
             modifier = Modifier
                 .drawBackdrop(
@@ -402,6 +403,9 @@ private fun LiquidNavBar(
                         blur(8.dp.toPx())
                         lens(24.dp.toPx(), 24.dp.toPx())
                     },
+                    highlight = { Highlight.Default },
+                    shadow = { Shadow(alpha = 0.55f) },
+                    innerShadow = { InnerShadow(radius = 4.dp, alpha = 0.30f) },
                     onDrawSurface = { drawRect(containerColor) }
                 )
                 .height(64.dp)

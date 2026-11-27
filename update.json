@@ -1,7 +1,7 @@
 {
-  "version": "0.8.6",
-  "code": 42,
-  "notes": "新增应用内检查更新：设置页新增「应用更新」，一键检查 GitHub Releases 新版本，弹窗展示更新说明，可选下载（系统下载器接管，带进度）并跳转系统安装器；GitHub 不通时自动切换镜像源。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.6/yansui-ai-0.8.6-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.6/yansui-ai-0.8.6-release.apk"
+  "version": "0.8.7",
+  "code": 43,
+  "notes": "底部导航补上玻璃棱边：外层胶囊加高光、内阴影与柔影，背后是纯色页面时也能看清玻璃边界；玻璃底色略提亮。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.7/yansui-ai-0.8.7-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.7/yansui-ai-0.8.7-release.apk"
 }
