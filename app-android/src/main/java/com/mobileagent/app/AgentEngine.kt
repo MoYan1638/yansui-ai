@@ -232,8 +232,9 @@ class AgentEngine(context: Context) {
 
     // ---- 显示流（对话页完整记录，跨话题保留；与模型上下文 history 分离） ----
 
-    private fun msgEntry(role: String, content: String): JsonObject = buildJsonObject {
+    private fun msgEntry(role: String, content: String, quote: String? = null): JsonObject = buildJsonObject {
         put("t", JsonPrimitive("m")); put("r", JsonPrimitive(role)); put("c", JsonPrimitive(content))
+        if (!quote.isNullOrBlank()) put("q", JsonPrimitive(quote)) // 引用上文（追问时挂的引用条）
     }
 
     private fun loadStream() {
@@ -260,19 +261,27 @@ class AgentEngine(context: Context) {
         }
     }
 
-    /** 记录一轮可见对话到显示流（工具卡片不入流）；跨话题持久保留 */
-    fun recordTurn(userText: String, replyText: String) {
-        stream.add(msgEntry("user", userText))
+    /** 记录一轮可见对话到显示流（工具卡片不入流）；跨话题持久保留；quote = 引用的上文 */
+    fun recordTurn(userText: String, replyText: String, quote: String? = null) {
+        stream.add(msgEntry("user", userText, quote))
         if (replyText.isNotBlank()) stream.add(msgEntry("assistant", replyText))
         saveStream()
     }
 
-    /** 对话页显示流条目："divider" to 标签，或 role to 内容 */
-    fun streamEntries(): List<Pair<String, String>> = stream.map {
-        if (it["t"]?.jsonPrimitive?.contentOrNull == "d")
-            "divider" to (it["l"]?.jsonPrimitive?.contentOrNull ?: "")
-        else
-            (it["r"]?.jsonPrimitive?.contentOrNull ?: "") to (it["c"]?.jsonPrimitive?.contentOrNull ?: "")
+    /** 对话页显示流条目（tag, 内容, 引用） */
+    data class DisplayEntry(val tag: String, val content: String, val quote: String? = null)
+
+    /** 对话页显示流条目：tag = "divider" / "user" / "assistant" */
+    fun streamEntries(): List<DisplayEntry> = stream.map {
+        if (it["t"]?.jsonPrimitive?.contentOrNull == "d") {
+            DisplayEntry("divider", it["l"]?.jsonPrimitive?.contentOrNull ?: "")
+        } else {
+            DisplayEntry(
+                it["r"]?.jsonPrimitive?.contentOrNull ?: "",
+                it["c"]?.jsonPrimitive?.contentOrNull ?: "",
+                it["q"]?.jsonPrimitive?.contentOrNull
+            )
+        }
     }
 
     /** 删除显示流中的一条消息（长按删除用）；只影响对话页显示，模型上下文不动 */

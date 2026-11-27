@@ -53,6 +53,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -67,7 +70,7 @@ import androidx.compose.ui.unit.sp
 
 /** 会话流条目：用户气泡 / Agent 气泡 / 工具执行卡片（原型三态）/ meta 行 */
 private sealed interface ChatItem {
-    data class User(val text: String) : ChatItem
+    data class User(val text: String, val quote: String? = null) : ChatItem
     data class Agent(val text: String) : ChatItem
     data class Meta(val rounds: Int, val maxRounds: Int, val tokens: Int, val skills: Int) : ChatItem
     /** 会话分隔：新话题开始处（旧记录保留在上方） */
@@ -167,6 +170,7 @@ private fun MenuDivider() {
 private fun Bubble(
     text: String,
     isUser: Boolean,
+    quote: String? = null,
     menuOpen: Boolean = false,
     onLongPress: () -> Unit = {},
     onDismissMenu: () -> Unit = {},
@@ -195,12 +199,45 @@ private fun Bubble(
                 .widthIn(max = 320.dp)
                 .combinedClickable(onClick = { onDismissMenu() }, onLongClick = onLongPress)
         ) {
-            Text(
-                text,
-                modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
-                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Column {
+                // 引用上文（追问时挂的引用）：左侧竖条 + 灰色小字，最多两行
+                if (!quote.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(2.dp)
+                                .height(14.dp)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.7f))
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        Text(
+                            quote,
+                            fontSize = 11.5.sp,
+                            lineHeight = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+                Text(
+                    text,
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
         if (menuOpen) {
             Popup(popupPositionProvider = menuPosition, onDismissRequest = onDismissMenu) {
@@ -358,11 +395,11 @@ fun ChatScreen(
     // 从显示流恢复完整对话（含历史话题分隔；手机杀后台/退出重开后记录仍在）
     LaunchedEffect(engine) {
         if (items.isEmpty()) {
-            engine.streamEntries().forEach { (tag, content) ->
-                when (tag) {
-                    "divider" -> items += ChatItem.Divider(content)
-                    "user" -> items += ChatItem.User(content)
-                    "assistant" -> items += ChatItem.Agent(content)
+            engine.streamEntries().forEach { e ->
+                when (e.tag) {
+                    "divider" -> items += ChatItem.Divider(e.content)
+                    "user" -> items += ChatItem.User(e.content, e.quote)
+                    "assistant" -> items += ChatItem.Agent(e.content)
                 }
             }
         }
@@ -376,9 +413,20 @@ fun ChatScreen(
     var currentModel by remember { mutableStateOf(engine.config?.model) }
     var pendingConfirm by remember { mutableStateOf<Pair<String, (Boolean) -> Unit>?>(null) }
     var menuIdx by remember { mutableStateOf(-1) } // 长按浮出菜单的 items 下标（-1 无）
+    var quotedText by remember { mutableStateOf<String?>(null) } // 追问引用的上文（输入框中显为引用条）
     var clearTarget by remember { mutableStateOf(-1) } // 「清除」待确认的 items 下标
     var ttsRef by remember { mutableStateOf<TextToSpeech?>(null) }
     val ctxRef = LocalContext.current
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    // 追问挂上引用后直接聚焦输入框、弹键盘
+    LaunchedEffect(quotedText) {
+        if (quotedText != null) {
+            runCatching { focusRequester.requestFocus() }
+            keyboard?.show()
+        }
+    }
     val clipboard = ctxRef.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val listState = rememberLazyListState()
 
@@ -477,14 +525,18 @@ fun ChatScreen(
         val text = input.trim()
         if (text.isEmpty() || running) return
         if (currentModel == null) { showPicker = true; return } // 未连接模型：先把选模型弹层弹出来
+        val quote = quotedText?.trim()?.takeIf { it.isNotBlank() }
         input = ""
+        quotedText = null
         running = true
-        items += ChatItem.User(text)
+        items += ChatItem.User(text, quote)
         var toolSeq = 0
         val main = android.os.Handler(android.os.Looper.getMainLooper())
+        // 引用上文时给模型带上出处，避免它佯装不知道在追问什么
+        val prompt = if (quote == null) text else "（引用上文：${quote.take(500)}）\n\n$text"
         Thread {
             engine.send(
-                input = text,
+                input = prompt,
                 onToolStart = { name, args ->
                     main.post {
                         items += ChatItem.Tool(++toolSeq, name, args.take(60), running = true, ok = true, result = "")
@@ -509,7 +561,7 @@ fun ChatScreen(
                             tokens = tin + tout,
                             skills = engine.skills.count { engine.isSkillEnabled(it.name) }
                         )
-                        engine.recordTurn(text, reply) // 可见对话持久进显示流
+                        engine.recordTurn(text, reply, quote) // 可见对话持久进显示流（含引用）
                         running = false
                     }
                 },
@@ -517,7 +569,7 @@ fun ChatScreen(
                     main.post {
                         items += ChatItem.Agent("⚠ 出错了：$msg")
                         running = false
-                        engine.recordTurn(text, "⚠ 出错了：$msg")
+                        engine.recordTurn(text, "⚠ 出错了：$msg", quote)
                     }
                 }
             )
@@ -650,8 +702,8 @@ fun ChatScreen(
                             menuIdx = -1
                         }
                         QuickAction("↩", "追问", Modifier.weight(1f)) {
-                            input = content.take(400)
-                            toast("已填入输入框")
+                            quotedText = content
+                            toast("已引用该条，输入你的追问")
                             menuIdx = -1
                         }
                     }
@@ -682,6 +734,7 @@ fun ChatScreen(
                     is ChatItem.User -> Bubble(
                         text = m.text,
                         isUser = true,
+                        quote = m.quote,
                         menuOpen = menuIdx == idx,
                         onLongPress = { menuIdx = idx },
                         onDismissMenu = { menuIdx = -1 },
@@ -732,19 +785,89 @@ fun ChatScreen(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
+            // 追问时挂的引用：上方给两个快捷追问（学豆包：解释一下 / 详细展开）
+            if (quotedText != null) {
+                Row(
+                    modifier = Modifier.padding(start = 2.dp, bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("解释一下", "详细展开").forEach { s ->
+                        Surface(
+                            onClick = { input = s },
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                        ) {
+                            Text(
+                                "$s →",
+                                fontSize = 11.5.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                }
+            }
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
-                Row(
-                    modifier = Modifier.padding(start = 14.dp, top = 4.dp, bottom = 4.dp, end = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Column {
+                    // 引用条：被引用的上文 + × 取消引用
+                    quotedText?.let { q ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp, top = 10.dp, end = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(2.dp)
+                                    .height(14.dp)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.7f))
+                            )
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                q,
+                                fontSize = 11.5.sp,
+                                lineHeight = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .clickable { quotedText = null },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("✕", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp, end = 12.dp, top = 8.dp)
+                                .height(1.dp)
+                                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.padding(start = 14.dp, top = 4.dp, bottom = 4.dp, end = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                     BasicTextField(
                         value = input,
                         onValueChange = { input = it },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester),
                         textStyle = MaterialTheme.typography.bodyMedium.copy(
                             color = MaterialTheme.colorScheme.onSurface
                         ),
@@ -779,6 +902,7 @@ fun ChatScreen(
                             else Color(0xFF101215),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                         )
+                    }
                     }
                 }
             }
