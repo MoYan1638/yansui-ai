@@ -1113,11 +1113,12 @@ fun ChatScreen(
             }
             }
 
-            // 「已启用」技能提示：独立小玻璃气泡，浮在输入气泡左下方
+            // 「已启用」技能提示：独立小玻璃气泡，与输入气泡/导航栏同宽对齐
             val hint = activeSkillNames()
             if (hint.isNotBlank()) {
                 Row(
                     modifier = Modifier
+                        .fillMaxWidth()
                         .then(
                             if (realGlass) {
                                 Modifier.drawBackdrop(

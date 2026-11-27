@@ -268,7 +268,7 @@ private fun GlassNavBarFallback(tab: Int, modifier: Modifier = Modifier, onSelec
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 10.dp)
+            .padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 10.dp)
             .glass(shape = RoundedCornerShape(26.dp), elevation = 18.dp)
             .padding(vertical = 5.dp, horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -371,7 +371,7 @@ private fun LiquidNavBar(
     )
 
     BoxWithConstraints(
-        modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 10.dp)
+        modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 10.dp)
     ) {
         val density = LocalDensity.current
         val tabs = items.size
