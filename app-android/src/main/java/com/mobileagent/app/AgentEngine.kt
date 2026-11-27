@@ -275,6 +275,15 @@ class AgentEngine(context: Context) {
             (it["r"]?.jsonPrimitive?.contentOrNull ?: "") to (it["c"]?.jsonPrimitive?.contentOrNull ?: "")
     }
 
+    /** 删除显示流中的一条消息（长按删除用）；只影响对话页显示，模型上下文不动 */
+    fun deleteStreamEntry(index: Int): Boolean {
+        if (busy.get()) return false
+        if (index < 0 || index >= stream.size) return false
+        stream.removeAt(index)
+        saveStream()
+        return true
+    }
+
     // ---- 历史会话（新会话=归档旧对话 + 开新上下文，记录永不丢） ----
 
     /** 归档会话的摘要，供「历史」列表展示 */

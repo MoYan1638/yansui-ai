@@ -1,8 +1,13 @@
 package com.mobileagent.app
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,8 +78,9 @@ private val FailColor = Color(0xFFE05A5A)
 
 // ---------- 气泡（原型：AI 描边左尖角 / 用户 accent 底右尖角） ----------
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Bubble(text: String, isUser: Boolean) {
+private fun Bubble(text: String, isUser: Boolean, onLongPress: () -> Unit = {}) {
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
@@ -91,7 +99,9 @@ private fun Bubble(text: String, isUser: Boolean) {
                 if (isUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
                 else MaterialTheme.colorScheme.outline
             ),
-            modifier = Modifier.widthIn(max = 320.dp)
+            modifier = Modifier
+                .widthIn(max = 320.dp)
+                .combinedClickable(onClick = {}, onLongClick = onLongPress)
         ) {
             Text(
                 text,
@@ -260,6 +270,8 @@ fun ChatScreen(
     var viewingSession by remember { mutableStateOf<AgentEngine.SessionInfo?>(null) }
     var currentModel by remember { mutableStateOf(engine.config?.model) }
     var pendingConfirm by remember { mutableStateOf<Pair<String, (Boolean) -> Unit>?>(null) }
+    var actionMsg by remember { mutableStateOf<Pair<Int, String>?>(null) } // 长按选中的气泡：items 下标 to 文本
+    val clipboard = LocalContext.current.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val listState = rememberLazyListState()
 
     // 运行确认桥：工具链敏感操作 → 弹确认对话框（原型待确认卡片态）
@@ -460,12 +472,12 @@ fun ChatScreen(
                     }
                 }
             }
-            items(items) { m ->
+            itemsIndexed(items) { idx, m ->
                 when (m) {
                     is ChatItem.Tool -> ToolCard(m)
                     is ChatItem.Divider -> SessionDivider(m.label)
-                    is ChatItem.User -> Bubble(m.text, isUser = true)
-                    is ChatItem.Agent -> Bubble(m.text, isUser = false)
+                    is ChatItem.User -> Bubble(m.text, isUser = true, onLongPress = { actionMsg = idx to m.text })
+                    is ChatItem.Agent -> Bubble(m.text, isUser = false, onLongPress = { actionMsg = idx to m.text })
                     is ChatItem.Meta -> Text(
                         "轮次 ${m.rounds}/${m.maxRounds} · tokens ${m.tokens} · 已启用 skill: ${m.skills}",
                         style = MonoStyle,
@@ -662,6 +674,63 @@ fun ChatScreen(
             },
             confirmButton = {
                 TextButton(onClick = { viewingSession = null }) { Text("关闭") }
+            }
+        )
+    }
+
+    // 长按消息：复制 / 删除该条
+    val ctx = LocalContext.current
+    actionMsg?.let { (idx, text) ->
+        AlertDialog(
+            onDismissRequest = { actionMsg = null },
+            title = { Text("消息操作") },
+            text = {
+                Column {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Text(
+                            text.take(120),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "删除只从对话页移除这条消息，不影响模型的上下文记忆。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = {
+                        clipboard.setPrimaryClip(ClipData.newPlainText("message", text))
+                        android.widget.Toast.makeText(ctx, "已复制", android.widget.Toast.LENGTH_SHORT).show()
+                        actionMsg = null
+                    }) { Text("复制", color = MaterialTheme.colorScheme.primary) }
+                    TextButton(onClick = {
+                        // 显示流与 User/Agent/Divider 条目一一对应：按序数定位真实下标
+                        val streamIdx = items.take(idx).count {
+                            it is ChatItem.User || it is ChatItem.Agent || it is ChatItem.Divider
+                        }
+                        if (engine.deleteStreamEntry(streamIdx)) items.removeAt(idx)
+                        else android.widget.Toast.makeText(
+                            ctx, "任务执行中，稍后再试", android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        actionMsg = null
+                    }) { Text("删除", color = FailColor) }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { actionMsg = null }) { Text("取消") }
             }
         )
     }
