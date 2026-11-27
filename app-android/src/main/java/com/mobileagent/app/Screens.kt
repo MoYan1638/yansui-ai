@@ -902,12 +902,12 @@ fun SettingsScreen(engine: AgentEngine) {
 
                 SectionLabel("会话")
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = { engine.newSession() }, shape = RoundedCornerShape(8.dp)) { Text("新会话") }
+                    OutlinedButton(onClick = { engine.startNewSession() }, shape = RoundedCornerShape(8.dp)) { Text("新会话") }
                     OutlinedButton(onClick = { engine.clearMemory() }, shape = RoundedCornerShape(8.dp)) { Text("清空长期记忆") }
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "新会话清空对话上下文；长期记忆是 Agent 跨会话保存的笔记",
+                    "新会话存档当前对话并开新上下文（记录不丢，会话页「历史」可回看）；长期记忆是 Agent 跨会话保存的笔记",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

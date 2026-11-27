@@ -12,8 +12,8 @@ android {
         applicationId = "com.mobileagent.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.5.10"
+        versionCode = 16
+        versionName = "0.6.0"
     }
 
     buildTypes {

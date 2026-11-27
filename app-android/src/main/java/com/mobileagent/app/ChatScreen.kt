@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,6 +24,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -52,6 +54,8 @@ private sealed interface ChatItem {
     data class User(val text: String) : ChatItem
     data class Agent(val text: String) : ChatItem
     data class Meta(val rounds: Int, val maxRounds: Int, val tokens: Int, val skills: Int) : ChatItem
+    /** 会话分隔：新话题开始处（旧记录保留在上方） */
+    data class Divider(val label: String) : ChatItem
     data class Tool(
         val id: Int,
         val name: String,
@@ -96,6 +100,37 @@ private fun Bubble(text: String, isUser: Boolean) {
                 color = MaterialTheme.colorScheme.onSurface
             )
         }
+    }
+}
+
+// ---------- 话题分隔（新话题开始处；上方旧记录保留可回看） ----------
+
+@Composable
+private fun SessionDivider(label: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
+        )
+        Text(
+            "  $label  ",
+            style = MonoStyle,
+            fontSize = 10.5.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
+        )
     }
 }
 
@@ -217,6 +252,8 @@ fun ChatScreen(
     var input by remember { mutableStateOf("") }
     var running by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
+    var showHistory by remember { mutableStateOf(false) }
+    var viewingSession by remember { mutableStateOf<AgentEngine.SessionInfo?>(null) }
     var currentModel by remember { mutableStateOf(engine.config?.model) }
     var pendingConfirm by remember { mutableStateOf<Pair<String, (Boolean) -> Unit>?>(null) }
     val listState = rememberLazyListState()
@@ -243,6 +280,14 @@ fun ChatScreen(
     fun activeSkillNames() = engine.skills
         .filter { engine.isSkillEnabled(it.name) }
         .joinToString(" · ") { it.name }
+
+    /** 开新话题：当前对话归档进历史，上下文重置，界面上方旧记录保留 */
+    fun startNewTopic() {
+        if (running) return
+        if (engine.startNewSession() == null) return // 执行中，拒绝
+        if (items.isEmpty() || items.last() is ChatItem.Divider) return
+        items += ChatItem.Divider("新话题 · 上次对话已存入历史")
+    }
 
     fun send() {
         val text = input.trim()
@@ -311,6 +356,35 @@ fun ChatScreen(
                 color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(Modifier.weight(1f))
+            // 历史会话（归档的旧对话，只读回看）
+            Text(
+                "历史",
+                style = MonoStyle,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clickable { showHistory = true }
+                    .padding(horizontal = 6.dp, vertical = 4.dp)
+            )
+            Spacer(Modifier.width(2.dp))
+            // 开新话题：归档当前对话 + 新上下文
+            Surface(
+                onClick = { startNewTopic() },
+                enabled = !running,
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Text(
+                    "＋",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (running) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp)
+                )
+            }
+            Spacer(Modifier.width(8.dp))
             // 模型徽章：点击弹出选模型层
             Surface(
                 onClick = { showPicker = true },
@@ -380,6 +454,7 @@ fun ChatScreen(
             items(items) { m ->
                 when (m) {
                     is ChatItem.Tool -> ToolCard(m)
+                    is ChatItem.Divider -> SessionDivider(m.label)
                     is ChatItem.User -> Bubble(m.text, isUser = true)
                     is ChatItem.Agent -> Bubble(m.text, isUser = false)
                     is ChatItem.Meta -> Text(
@@ -499,6 +574,86 @@ fun ChatScreen(
             onDismiss = { showPicker = false },
             onSwitched = { currentModel = engine.config?.model },
             onOpenSettings = onOpenSettings
+        )
+    }
+
+    // 历史会话列表（新话题归档后在这里回看）
+    if (showHistory) {
+        val sessions = remember(showHistory) { engine.archivedSessions() }
+        AlertDialog(
+            onDismissRequest = { showHistory = false },
+            title = { Text("历史会话") },
+            text = {
+                if (sessions.isEmpty()) {
+                    Text(
+                        "还没有历史会话。点右上角「＋」开新话题时，当前对话会归档到这里。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 380.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(sessions) { s ->
+                            Surface(
+                                onClick = { viewingSession = s },
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp)) {
+                                    Text(
+                                        s.title.ifBlank { "（空会话）" },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        "${s.timeLabel} · ${s.count} 轮对话",
+                                        style = MonoStyle,
+                                        fontSize = 10.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showHistory = false }) { Text("关闭") }
+            }
+        )
+    }
+
+    // 查看某条历史会话（只读）
+    viewingSession?.let { s ->
+        val msgs = remember(s.id) { engine.sessionChat(s.id) }
+        AlertDialog(
+            onDismissRequest = { viewingSession = null },
+            title = {
+                Text(
+                    s.title.ifBlank { "（空会话）" },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(msgs) { (role, content) ->
+                        Bubble(content, isUser = role == "user")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewingSession = null }) { Text("关闭") }
+            }
         )
     }
 

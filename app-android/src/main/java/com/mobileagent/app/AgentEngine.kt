@@ -41,6 +41,7 @@ class AgentEngine(context: Context) {
     private val keysPath: Path = root.resolve("keys.json")
     private val skillStatePath: Path = root.resolve("data").resolve("skills-state.json")
     private val historyPath: Path = root.resolve("data").resolve("history.json")
+    private val sessionsDir: Path = root.resolve("data").resolve("sessions") // 已归档的历史会话
     private val memoryDir: Path = root.resolve("data").resolve("memory")
 
     private val busy = AtomicBoolean(false)
@@ -205,18 +206,87 @@ class AgentEngine(context: Context) {
      */
     fun restoredChat(): List<Pair<String, String>> = runCatching {
         if (!Files.exists(historyPath)) return emptyList()
-        Json.parseToJsonElement(historyPath.readTextCompat()).jsonArray.mapNotNull { el ->
-            val obj = el as? JsonObject ?: return@mapNotNull null
-            val role = obj["role"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            if (role != "user" && role != "assistant") return@mapNotNull null
-            val content = (obj["content"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-                ?: (obj["content"] as? JsonArray)?.joinToString("\n") { part ->
-                    (part as? JsonObject)?.get("text")?.jsonPrimitive?.content ?: ""
-                } ?: return@mapNotNull null
-            if (content.isBlank()) return@mapNotNull null
-            role to content
+        chatPairs(Json.parseToJsonElement(historyPath.readTextCompat()).jsonArray)
+    }.getOrDefault(emptyList())
+
+    /** 消息数组 → 可显示气泡（只取 user/assistant 的文本，跳过工具与系统消息） */
+    private fun chatPairs(arr: JsonArray): List<Pair<String, String>> = arr.mapNotNull { el ->
+        val obj = el as? JsonObject ?: return@mapNotNull null
+        val role = obj["role"]?.jsonPrimitive?.content ?: return@mapNotNull null
+        if (role != "user" && role != "assistant") return@mapNotNull null
+        val content = (obj["content"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            ?: (obj["content"] as? JsonArray)?.joinToString("\n") { part ->
+                (part as? JsonObject)?.get("text")?.jsonPrimitive?.content ?: ""
+            } ?: return@mapNotNull null
+        if (content.isBlank()) return@mapNotNull null
+        role to content
+    }
+
+    // ---- 历史会话（新会话=归档旧对话 + 开新上下文，记录永不丢） ----
+
+    /** 归档会话的摘要，供「历史」列表展示 */
+    data class SessionInfo(val id: String, val title: String, val count: Int, val timeLabel: String)
+
+    /** 把当前上下文写进 sessions/<时间戳>.json；返回归档 id（无内容返回 null） */
+    private fun archiveHistory(): String? {
+        if (history.isEmpty()) return null
+        return runCatching {
+            sessionsDir.createDirectories()
+            val fmt = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+            var id = fmt.format(java.util.Date())
+            var f = sessionsDir.resolve("$id.json")
+            var n = 1
+            while (Files.exists(f)) { id = fmt.format(java.util.Date()) + "-$n"; f = sessionsDir.resolve("$id.json"); n++ }
+            f.writeTextCompat(JsonArray(history).toString())
+            id
+        }.getOrNull()
+    }
+
+    /** 历史会话列表（新的在前） */
+    fun archivedSessions(): List<SessionInfo> = runCatching {
+        if (!Files.exists(sessionsDir)) return emptyList()
+        Files.list(sessionsDir).use { stream ->
+            stream.filter { it.fileName.toString().endsWith(".json") }
+                .sorted(Comparator.reverseOrder())
+                .map { p ->
+                    val pairs = runCatching {
+                        chatPairs(Json.parseToJsonElement(p.readTextCompat()).jsonArray)
+                    }.getOrDefault(emptyList())
+                    val rawId = p.fileName.toString().removeSuffix(".json")
+                    SessionInfo(
+                        id = rawId,
+                        title = pairs.firstOrNull { it.first == "user" }?.second?.take(24)?.replace("\n", " ")
+                            ?: "（空会话）",
+                        count = pairs.count { it.first == "user" },
+                        timeLabel = rawId.take(8).let {
+                            "${it.substring(4, 6)}/${it.substring(6, 8)} " +
+                                rawId.substringAfter("-", "").take(4).let { t ->
+                                    if (t.length >= 4) "${t.substring(0, 2)}:${t.substring(2, 4)}" else ""
+                                }
+                        }.trim()
+                    )
+                }.toList()
         }
     }.getOrDefault(emptyList())
+
+    /** 读取某个归档会话的可显示消息 */
+    fun sessionChat(id: String): List<Pair<String, String>> = runCatching {
+        val f = sessionsDir.resolve("$id.json")
+        if (!Files.exists(f)) return emptyList()
+        chatPairs(Json.parseToJsonElement(f.readTextCompat()).jsonArray)
+    }.getOrDefault(emptyList())
+
+    /**
+     * 新会话：当前对话归档到历史，然后清空上下文开新话题（长期记忆保留）。
+     * 任务执行中返回 null。
+     */
+    fun startNewSession(): String? {
+        if (busy.get()) return null
+        val archived = archiveHistory()
+        history.clear()
+        runCatching { Files.deleteIfExists(historyPath) } // 检查点同步清空
+        return archived ?: ""
+    }
 
     private fun loadKeys() {
         providerKeys.clear()
@@ -253,14 +323,6 @@ class AgentEngine(context: Context) {
                 JsonObject(skills.associate { it.name to JsonPrimitive(it.name !in disabledSkills) }).toString()
             )
         }
-    }
-
-    /** 新会话：清空上下文（长期记忆保留）；任务执行中返回 false */
-    fun newSession(): Boolean {
-        if (busy.get()) return false
-        history.clear()
-        runCatching { Files.deleteIfExists(historyPath) } // 检查点同步清空
-        return true
     }
 
     // ---- 技能开关（技能页 Switch；关闭的技能不注入提示词） ----
