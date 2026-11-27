@@ -1,7 +1,7 @@
 {
-  "version": "0.8.9",
-  "code": 45,
-  "notes": "输入栏重构：输入气泡与「已启用」技能提示拆成两个独立玻璃气泡，技能提示变为悬浮小胶囊；含 0.8.8 的底栏灰雾修复。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.9/yansui-ai-0.8.9-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.9/yansui-ai-0.8.9-release.apk"
+  "version": "0.8.10",
+  "code": 46,
+  "notes": "底部三个玻璃气泡统一宽度：输入气泡、已启用技能提示、导航栏左右边缘完全对齐，横向连成一列。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.10/yansui-ai-0.8.10-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.10/yansui-ai-0.8.10-release.apk"
 }
