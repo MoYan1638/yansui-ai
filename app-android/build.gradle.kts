@@ -11,8 +11,8 @@ android {
         applicationId = "com.yansui.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 57
-        versionName = "0.8.21"
+        versionCode = 58
+        versionName = "0.8.22"
     }
 
     // 正式签名：密钥与密码在 signing/signing.properties（不入库，本地保管；丢了就无法再升级）

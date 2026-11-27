@@ -100,6 +100,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -1424,6 +1425,52 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                         Text("● 已保存 · ${engine.config?.model}", style = MonoStyle, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                     }
                 }
+
+                SectionLabel("API Keys · 各厂商独立保存")
+                // 每家厂商一行，各自掩码保存；之后在供应商里切换或从模型弹层选模型时自动取对应厂商的 Key
+                val keyProviders = remember {
+                    ModelPresets.all.distinctBy { it.provider }.map { it.provider to it.baseUrl }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    keyProviders.forEach { (prov, provUrl) ->
+                        var k by remember(prov) { mutableStateOf(engine.keyFor(prov) ?: "") }
+                        var savedK by remember(prov) { mutableStateOf(engine.keyFor(prov) ?: "") }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                prov,
+                                style = MonoStyle,
+                                fontSize = 10.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.width(72.dp)
+                            )
+                            OutlinedTextField(
+                                value = k,
+                                onValueChange = { k = it },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                placeholder = { Text("未保存", fontSize = 10.sp) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            TextButton(
+                                onClick = {
+                                    engine.setProviderKey(prov, k)
+                                    savedK = k.trim()
+                                },
+                                enabled = k.isNotBlank() && k.trim() != savedK
+                            ) { Text("保存", fontSize = 11.sp) }
+                        }
+                        Text(
+                            provUrl,
+                            style = MonoStyle,
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 72.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
 
                 SectionLabel("会话")
                 var confirmClearChats by remember { mutableStateOf(false) }

@@ -1,5 +1,10 @@
 # 言岁AI · 经验教训备忘
 
+## 2026-11-27 设置页 Key 管理两坑（v0.8.21）
+- 密钥字段回显必须掩码：存储加密≠显示安全，截图/旁观即泄露；Field 加 masked 参数 + 显示/隐藏切换（Visibility 图标在 icons-extended，不想加依赖就用文字按钮）
+- 多厂商 Key 共存时，切换供应商必须同时换 key：`apiKey = engine.keyFor(providerKeyOf(url)) ?: ""`，否则上一家的 Key 会被保存到新厂商名下（错误绑定且实调会 401）
+- Kotlin 语法坑：`trailingIcon = if (x) {{...} else null` 双大括号写法编译错，要写成 `if (x) { { ... } } else null` 分行
+
 ## 2026-11-27 技能热更新：源内容会变，下载必须校验
 - 事故：用户检查更新把 love-companion 拉成了上游原版——当时远端 skills/love-companion 短暂停的是原版（另一条工作线推的 update 提交）
 - 加固（SkillUpdater.kt）：①raw/mirror 请求带 `?t=<ms>` 破 CDN/镜像缓存；②SKILL.md 下载后校验头部含「移动端适配版」，否则中止且不动本地

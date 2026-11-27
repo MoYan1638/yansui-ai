@@ -1,7 +1,7 @@
 {
-  "version": "0.8.21",
-  "code": 57,
-  "notes": "设置页 API Key 默认掩码显示（可点显示/隐藏切换）；切换供应商时自动换成该厂商已存的 Key，没存过则清空，不再把上一家的 Key 误绑到新厂商。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.21/yansui-ai-0.8.21-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.21/yansui-ai-0.8.21-release.apk"
+  "version": "0.8.22",
+  "code": 58,
+  "notes": "设置页新增「API Keys·各厂商独立保存」区块：deepseek/moonshot/智谱/千问/minimax/硅基流动各自一行掩码保存，切换模型时自动取对应厂商的 Key，互不覆盖。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.22/yansui-ai-0.8.22-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.22/yansui-ai-0.8.22-release.apk"
 }
