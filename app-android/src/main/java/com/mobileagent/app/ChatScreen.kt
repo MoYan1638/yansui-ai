@@ -289,7 +289,7 @@ private fun SessionDivider(label: String) {
 
 @Composable
 private fun ToolCard(item: ChatItem.Tool) {
-    var open by remember { mutableStateOf(!item.running || item.pending) }
+    var open by remember { mutableStateOf(item.pending) } // 默认折叠，点头部展开看 result
     val statusText = when {
         item.pending -> "待确认"
         item.running -> "执行中"
@@ -399,6 +399,14 @@ fun ChatScreen(
                     "divider" -> items += ChatItem.Divider(e.content)
                     "user" -> items += ChatItem.User(e.content, e.quote)
                     "assistant" -> items += ChatItem.Agent(e.content)
+                    "tool" -> items += ChatItem.Tool(
+                        id = items.size,
+                        name = e.content,
+                        args = e.args,
+                        running = false,
+                        ok = e.ok,
+                        result = e.result
+                    )
                 }
             }
         }
@@ -471,7 +479,7 @@ fun ChatScreen(
 
     /** 删除显示流里的这条消息（工具卡片/Meta 行不入流，无需处理） */
     fun streamIndexOf(idx: Int) = items.take(idx).count {
-        it is ChatItem.User || it is ChatItem.Agent || it is ChatItem.Divider
+        it is ChatItem.User || it is ChatItem.Agent || it is ChatItem.Divider || it is ChatItem.Tool
     }
 
     fun deleteItem(idx: Int) {
@@ -504,6 +512,7 @@ fun ChatScreen(
         quotedText = null
         running = true
         items += ChatItem.User(text, quote)
+        engine.beginTurn(text, quote) // 用户消息先入显示流，工具卡片随后按序追加（重启后可回看）
         var toolSeq = 0
         val main = android.os.Handler(android.os.Looper.getMainLooper())
         // 引用上文时给模型带上出处，避免它佯装不知道在追问什么
@@ -516,13 +525,14 @@ fun ChatScreen(
                         items += ChatItem.Tool(++toolSeq, name, args.take(60), running = true, ok = true, result = "")
                     }
                 },
-                onToolCall = { _, _, result ->
+                onToolCall = { name, args, result ->
                     main.post {
                         val idx = items.indexOfLast { it is ChatItem.Tool && it.running }
                         if (idx >= 0) {
                             val t = items[idx] as ChatItem.Tool
                             val ok = !result.startsWith("工具执行失败") && !result.startsWith("工具执行异常")
                             items[idx] = t.copy(running = false, ok = ok, result = result.take(600))
+                            engine.appendTool(name, args, result, ok) // 执行记录入显示流
                         }
                     }
                 },
@@ -535,7 +545,7 @@ fun ChatScreen(
                             tokens = tin + tout,
                             skills = engine.skills.count { engine.isSkillEnabled(it.name) }
                         )
-                        engine.recordTurn(text, reply, quote) // 可见对话持久进显示流（含引用）
+                        engine.endTurn(reply) // 助手回复收尾入流
                         running = false
                     }
                 },
@@ -543,7 +553,7 @@ fun ChatScreen(
                     main.post {
                         items += ChatItem.Agent("⚠ 出错了：$msg")
                         running = false
-                        engine.recordTurn(text, "⚠ 出错了：$msg", quote)
+                        engine.endTurn("⚠ 出错了：$msg")
                     }
                 }
             )

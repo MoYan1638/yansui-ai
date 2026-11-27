@@ -263,20 +263,56 @@ class AgentEngine(context: Context) {
 
     /** 记录一轮可见对话到显示流（工具卡片不入流）；跨话题持久保留；quote = 引用的上文 */
     fun recordTurn(userText: String, replyText: String, quote: String? = null) {
+        beginTurn(userText, quote)
+        endTurn(replyText)
+    }
+
+    /** 新一轮开始：先把用户消息写进显示流（工具卡片随后按序插入，重启后顺序不乱） */
+    fun beginTurn(userText: String, quote: String? = null) {
         stream.add(msgEntry("user", userText, quote))
+        saveStream()
+    }
+
+    /** 一次工具调用完成：写进显示流（旧版只在内存里，重启就没了） */
+    fun appendTool(name: String, args: String, result: String, ok: Boolean) {
+        stream.add(buildJsonObject {
+            put("t", JsonPrimitive("tl"))
+            put("n", JsonPrimitive(name))
+            put("a", JsonPrimitive(args.take(120)))
+            put("ok", JsonPrimitive(ok))
+            put("r", JsonPrimitive(result.take(600)))
+        })
+        saveStream()
+    }
+
+    /** 本轮结束：追加助手回复 */
+    fun endTurn(replyText: String) {
         if (replyText.isNotBlank()) stream.add(msgEntry("assistant", replyText))
         saveStream()
     }
 
-    /** 对话页显示流条目（tag, 内容, 引用） */
-    data class DisplayEntry(val tag: String, val content: String, val quote: String? = null)
+    /** 对话页显示流条目（tag, 内容, 引用；工具卡片额外带参数/结果） */
+    data class DisplayEntry(
+        val tag: String,       // divider / user / assistant / tool
+        val content: String,   // 文本内容；工具条目为工具名
+        val quote: String? = null,
+        val args: String = "",
+        val ok: Boolean = true,
+        val result: String = "",
+    )
 
-    /** 对话页显示流条目：tag = "divider" / "user" / "assistant" */
+    /** 对话页显示流条目 */
     fun streamEntries(): List<DisplayEntry> = stream.map {
-        if (it["t"]?.jsonPrimitive?.contentOrNull == "d") {
-            DisplayEntry("divider", it["l"]?.jsonPrimitive?.contentOrNull ?: "")
-        } else {
-            DisplayEntry(
+        when (it["t"]?.jsonPrimitive?.contentOrNull) {
+            "d" -> DisplayEntry("divider", it["l"]?.jsonPrimitive?.contentOrNull ?: "")
+            "tl" -> DisplayEntry(
+                tag = "tool",
+                content = it["n"]?.jsonPrimitive?.contentOrNull ?: "工具",
+                args = it["a"]?.jsonPrimitive?.contentOrNull ?: "",
+                ok = it["ok"]?.jsonPrimitive?.booleanOrNull ?: true,
+                result = it["r"]?.jsonPrimitive?.contentOrNull ?: ""
+            )
+            else -> DisplayEntry(
                 it["r"]?.jsonPrimitive?.contentOrNull ?: "",
                 it["c"]?.jsonPrimitive?.contentOrNull ?: "",
                 it["q"]?.jsonPrimitive?.contentOrNull
@@ -318,7 +354,7 @@ class AgentEngine(context: Context) {
     fun clearStreamEntry(index: Int): Boolean {
         if (busy.get()) return false
         if (index < 0 || index >= stream.size) return false
-        val visibleIdx = stream.take(index).count { it["t"]?.jsonPrimitive?.contentOrNull != "d" }
+        val visibleIdx = stream.take(index).count { it["t"]?.jsonPrimitive?.contentOrNull == "m" }
         stream.removeAt(index)
         saveStream()
         runCatching {
