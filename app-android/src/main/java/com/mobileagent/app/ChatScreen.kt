@@ -290,6 +290,10 @@ private fun SessionDivider(label: String) {
 @Composable
 private fun ToolCard(item: ChatItem.Tool) {
     var open by remember { mutableStateOf(item.pending) } // 默认折叠，点头部展开看 result
+    // 本轮对话结束（工具执行完成）自动折叠；需要回看 result 再点头部展开
+    LaunchedEffect(item.running, item.pending) {
+        if (!item.running && !item.pending) open = false
+    }
     val statusText = when {
         item.pending -> "待确认"
         item.running -> "执行中"
@@ -531,7 +535,7 @@ fun ChatScreen(
                         if (idx >= 0) {
                             val t = items[idx] as ChatItem.Tool
                             val ok = !result.startsWith("工具执行失败") && !result.startsWith("工具执行异常")
-                            items[idx] = t.copy(running = false, ok = ok, result = result.take(600))
+                            items[idx] = t.copy(running = false, pending = false, ok = ok, result = result.take(600))
                             engine.appendTool(name, args, result, ok) // 执行记录入显示流
                         }
                     }
