@@ -9,11 +9,11 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.mobileagent.app"
+        applicationId = "com.yansui.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 35
-        versionName = "0.7.9"
+        versionCode = 36
+        versionName = "0.8.0"
     }
 
     // 正式签名：密钥与密码在 signing/signing.properties（不入库，本地保管；丢了就无法再升级）
