@@ -66,6 +66,11 @@ class AgentEngine(context: Context) {
 
     var skills: List<Skill> = emptyList()
         private set
+
+    /** APK 内置技能（assets/skills 下的目录），技能页用它标记「内置」 */
+    val builtinSkills: Set<String> by lazy {
+        appContext.assets.list("skills")?.toSet() ?: emptySet()
+    }
     var config: ModelConfig? = null
         private set
 

@@ -698,6 +698,10 @@ fun SkillsScreen(engine: AgentEngine) {
                             )
                             Spacer(Modifier.width(8.dp))
                             TagChip(skill.category.ifBlank { "陪伴" }, dim = true)
+                            if (skill.name in engine.builtinSkills) {
+                                Spacer(Modifier.width(4.dp))
+                                TagChip("内置", accent = true)
+                            }
                             Spacer(Modifier.weight(1f))
                             Switch(
                                 checked = switched,
