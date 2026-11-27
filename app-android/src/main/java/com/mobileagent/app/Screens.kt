@@ -1231,6 +1231,9 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     appApkFile = f
                     appUpdState = "ready"
                     showAppUpd = true
+                    // 直接拉起系统安装器：用户既然点了下载，就不用再多点一步
+                    //（首次会先跳到「允许安装未知应用」授权页，授完再装）
+                    AppUpdater.install(ctx, f)
                 } else {
                     appUpdMsg = "下载失败或已取消"
                     appUpdState = "error"
@@ -1244,6 +1247,22 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
             androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
         )
         onDispose { runCatching { ctx.unregisterReceiver(appDlReceiver) } }
+    }
+
+    // 进设置页时补偿一次：上次下载完成但广播没收到（页面切走/应用被杀），
+    // 从 DownloadManager 记录的任务状态里恢复；已手动装过的残留也会被清理
+    LaunchedEffect(Unit) {
+        if (appUpdState == "idle") {
+            Thread {
+                val r = AppUpdater.resumeDownload(ctx, currentVer)
+                if (r != null) {
+                    appUpdMsg = "v${r.first} 更新包已就绪"
+                    appApkFile = r.second
+                    appUpdState = "ready"
+                    showAppUpd = true
+                }
+            }.start()
+        }
     }
 
     // 下载中轮询进度

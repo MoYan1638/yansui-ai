@@ -111,8 +111,8 @@ object AppUpdater {
         out
     }.getOrNull()
 
-    /** 发起系统安装器（需用户已授予「安装未知应用」；未授予时系统会先引导到授权页） */
-    fun install(ctx: Context, apk: File) {
+    /** 发起系统安装器（需用户已授予「安装未知应用」；未授予时系统会先引导到授权页）；返回是否拉起成功 */
+    fun install(ctx: Context, apk: File): Boolean = runCatching {
         val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", apk)
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
@@ -120,7 +120,35 @@ object AppUpdater {
             addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         ctx.startActivity(intent)
-    }
+        true
+    }.getOrDefault(false)
+
+    /**
+     * 恢复上次未走完的安装流程：查记录的下载任务状态——
+     * 下载完成且比当前版本新 → 拷贝出 apk 返回 (版本, 文件)；
+     * 已装上或下载失败 → 清理残留（下载记录 + cache 里的 apk）返回 null。
+     */
+    fun resumeDownload(ctx: Context, currentVer: String): Pair<String, File>? = runCatching {
+        val pref = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+        val id = pref.getLong("download_id", -1L)
+        val ver = pref.getString("download_version", null) ?: return null
+        if (id <= 0L) return null
+        val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val q = dm.query(DownloadManager.Query().setFilterById(id))
+        if (!q.moveToFirst()) { pref.edit().clear().apply(); return null }
+        val status = q.getInt(q.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+        when {
+            status == DownloadManager.STATUS_SUCCESSFUL && isNewer(ver, currentVer) ->
+                prepareInstall(ctx, id)?.let { ver to it }
+            status == DownloadManager.STATUS_SUCCESSFUL || status == DownloadManager.STATUS_FAILED -> {
+                // 已经装上（手动装过）或下载失败：清理残留
+                pref.edit().clear().apply()
+                runCatching { File(ctx.cacheDir, "update.apk").delete() }
+                null
+            }
+            else -> null // 还在下载中，不打扰
+        }
+    }.getOrNull()
 
     private fun download(url: String): ByteArray? = runCatching {
         val conn = URL(url).openConnection() as HttpURLConnection
