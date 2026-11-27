@@ -701,6 +701,9 @@ fun SkillsScreen(engine: AgentEngine) {
                             if (skill.name in engine.builtinSkills) {
                                 Spacer(Modifier.width(4.dp))
                                 TagChip("内置", accent = true)
+                            } else {
+                                Spacer(Modifier.width(4.dp))
+                                TagChip("自定义", dim = true)
                             }
                             Spacer(Modifier.weight(1f))
                             Switch(
