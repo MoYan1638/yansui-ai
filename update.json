@@ -1,7 +1,7 @@
 {
-  "version": "0.8.19",
-  "code": 55,
-  "notes": "修复滑块停到的标签标题消失：透镜染色层补录文字，滑块盖住哪一项，哪项的图标和标题都会以强调色透镜重画。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.19/yansui-ai-0.8.19-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.19/yansui-ai-0.8.19-release.apk"
+  "version": "0.8.20",
+  "code": 56,
+  "notes": "修复技能检查更新曾拉到上游原版的问题：更新请求加缓存穿透参数；下载内容校验必须是移动端适配版，异常自动中止。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.20/yansui-ai-0.8.20-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.20/yansui-ai-0.8.20-release.apk"
 }
