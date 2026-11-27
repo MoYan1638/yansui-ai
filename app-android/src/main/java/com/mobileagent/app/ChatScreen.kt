@@ -3,11 +3,14 @@ package com.mobileagent.app
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.speech.tts.TextToSpeech
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +53,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,11 +85,94 @@ private sealed interface ChatItem {
 
 private val FailColor = Color(0xFFE05A5A)
 
-// ---------- 气泡（原型：AI 描边左尖角 / 用户 accent 底右尖角） ----------
+// ---------- 长按菜单（参照豆包形态：贴气泡浮出的卡片＝图标快捷行 + 竖排列表，危险项红字垫底） ----------
+
+/** 让菜单贴住气泡：优先浮在上方，空间不足翻到下方；用户气泡右对齐、AI 气泡左对齐 */
+private class BubbleMenuPosition(private val alignEnd: Boolean) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize
+    ): IntOffset {
+        val gap = 8
+        var y = anchorBounds.top - popupContentSize.height - gap
+        if (y < gap) y = anchorBounds.bottom + gap
+        if (y + popupContentSize.height > windowSize.height - gap) {
+            y = (windowSize.height - popupContentSize.height - gap).coerceAtLeast(gap)
+        }
+        val x = (if (alignEnd) anchorBounds.right - popupContentSize.width else anchorBounds.left)
+            .coerceIn(gap, (windowSize.width - popupContentSize.width - gap).coerceAtLeast(gap))
+        return IntOffset(x, y)
+    }
+}
+
+@Composable
+private fun QuickAction(glyph: String, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(9.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(glyph, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.height(3.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun MenuRow(glyph: String, label: String, danger: Boolean = false, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 15.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            glyph,
+            fontSize = 13.sp,
+            color = if (danger) FailColor else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(21.dp)
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (danger) FailColor else MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+private fun MenuDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+    )
+}
+
+// ---------- 气泡（原型：AI 描边左尖角 / 用户 accent 底右尖角；长按浮出操作菜单） ----------
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Bubble(text: String, isUser: Boolean, onLongPress: () -> Unit = {}) {
+private fun Bubble(
+    text: String,
+    isUser: Boolean,
+    menuOpen: Boolean = false,
+    onLongPress: () -> Unit = {},
+    onDismissMenu: () -> Unit = {},
+    menu: @Composable () -> Unit = {},
+) {
+    val menuPosition = remember(isUser) { BubbleMenuPosition(alignEnd = isUser) }
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
@@ -101,7 +193,7 @@ private fun Bubble(text: String, isUser: Boolean, onLongPress: () -> Unit = {}) 
             ),
             modifier = Modifier
                 .widthIn(max = 320.dp)
-                .combinedClickable(onClick = {}, onLongClick = onLongPress)
+                .combinedClickable(onClick = { onDismissMenu() }, onLongClick = onLongPress)
         ) {
             Text(
                 text,
@@ -109,6 +201,19 @@ private fun Bubble(text: String, isUser: Boolean, onLongPress: () -> Unit = {}) 
                 style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
                 color = MaterialTheme.colorScheme.onSurface
             )
+        }
+        if (menuOpen) {
+            Popup(popupPositionProvider = menuPosition, onDismissRequest = onDismissMenu) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    shadowElevation = 12.dp,
+                    modifier = Modifier.width(210.dp)
+                ) {
+                    Column(modifier = Modifier.padding(vertical = 6.dp)) { menu() }
+                }
+            }
         }
     }
 }
@@ -270,8 +375,10 @@ fun ChatScreen(
     var viewingSession by remember { mutableStateOf<AgentEngine.SessionInfo?>(null) }
     var currentModel by remember { mutableStateOf(engine.config?.model) }
     var pendingConfirm by remember { mutableStateOf<Pair<String, (Boolean) -> Unit>?>(null) }
-    var actionMsg by remember { mutableStateOf<Pair<Int, String>?>(null) } // 长按选中的气泡：items 下标 to 文本
-    val clipboard = LocalContext.current.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    var menuIdx by remember { mutableStateOf(-1) } // 长按浮出菜单的 items 下标（-1 无）
+    var ttsRef by remember { mutableStateOf<TextToSpeech?>(null) }
+    val ctxRef = LocalContext.current
+    val clipboard = ctxRef.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val listState = rememberLazyListState()
 
     // 运行确认桥：工具链敏感操作 → 弹确认对话框（原型待确认卡片态）
@@ -300,6 +407,51 @@ fun ChatScreen(
     // 新条目自动滚到底部
     LaunchedEffect(items.size) {
         if (items.isNotEmpty()) listState.animateScrollToItem(items.size - 1)
+        menuIdx = -1 // 列表结构变化时收起长按菜单，避免下标错位
+    }
+
+    // 朗读引擎随页面释放
+    DisposableEffect(Unit) {
+        onDispose {
+            runCatching { ttsRef?.stop(); ttsRef?.shutdown() }
+        }
+    }
+
+    fun toast(msg: String) {
+        android.widget.Toast.makeText(ctxRef, msg, android.widget.Toast.LENGTH_SHORT).show()
+    }
+
+    /** 朗读：首次调用时惰性初始化 TTS，初始化完成后自动念完这条 */
+    fun speak(content: String) {
+        val existing = ttsRef
+        if (existing == null) {
+            ttsRef = TextToSpeech(ctxRef) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    ttsRef?.language = java.util.Locale.CHINA
+                    ttsRef?.speak(content, TextToSpeech.QUEUE_FLUSH, null, "chat-msg")
+                } else toast("朗读引擎不可用")
+            }
+        } else {
+            existing.stop()
+            existing.language = java.util.Locale.CHINA
+            existing.speak(content, TextToSpeech.QUEUE_FLUSH, null, "chat-msg")
+        }
+    }
+
+    fun shareText(content: String) {
+        val i = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, content)
+        }
+        runCatching { ctxRef.startActivity(Intent.createChooser(i, "分享消息")) }
+    }
+
+    /** 删除显示流里的这条消息（工具卡片/Meta 行不入流，无需处理） */
+    fun deleteItem(idx: Int) {
+        val streamIdx = items.take(idx).count {
+            it is ChatItem.User || it is ChatItem.Agent || it is ChatItem.Divider
+        }
+        if (engine.deleteStreamEntry(streamIdx)) items.removeAt(idx) else toast("任务执行中，稍后再试")
     }
 
     fun activeSkillNames() = engine.skills
@@ -473,11 +625,65 @@ fun ChatScreen(
                 }
             }
             itemsIndexed(items) { idx, m ->
+                // 长按菜单内容：图标快捷行（复制/朗读/追问）+ 竖排列表（新话题继续/分享/删除）
+                val menuBody: @Composable () -> Unit = {
+                    val content = when (m) {
+                        is ChatItem.User -> m.text
+                        is ChatItem.Agent -> m.text
+                        else -> ""
+                    }
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        QuickAction("⧉", "复制", Modifier.weight(1f)) {
+                            clipboard.setPrimaryClip(ClipData.newPlainText("message", content))
+                            toast("已复制")
+                            menuIdx = -1
+                        }
+                        QuickAction("♪", "朗读", Modifier.weight(1f)) {
+                            speak(content)
+                            menuIdx = -1
+                        }
+                        QuickAction("↩", "追问", Modifier.weight(1f)) {
+                            input = content.take(400)
+                            toast("已填入输入框")
+                            menuIdx = -1
+                        }
+                    }
+                    MenuDivider()
+                    MenuRow("✚", "在新话题中继续") {
+                        startNewTopic()
+                        input = content.take(400)
+                        toast("已开新话题，内容已填入")
+                        menuIdx = -1
+                    }
+                    MenuRow("↗", "分享") {
+                        shareText(content)
+                        menuIdx = -1
+                    }
+                    MenuDivider()
+                    MenuRow("✕", "删除", danger = true) {
+                        deleteItem(idx)
+                        menuIdx = -1
+                    }
+                }
                 when (m) {
                     is ChatItem.Tool -> ToolCard(m)
                     is ChatItem.Divider -> SessionDivider(m.label)
-                    is ChatItem.User -> Bubble(m.text, isUser = true, onLongPress = { actionMsg = idx to m.text })
-                    is ChatItem.Agent -> Bubble(m.text, isUser = false, onLongPress = { actionMsg = idx to m.text })
+                    is ChatItem.User -> Bubble(
+                        text = m.text,
+                        isUser = true,
+                        menuOpen = menuIdx == idx,
+                        onLongPress = { menuIdx = idx },
+                        onDismissMenu = { menuIdx = -1 },
+                        menu = menuBody
+                    )
+                    is ChatItem.Agent -> Bubble(
+                        text = m.text,
+                        isUser = false,
+                        menuOpen = menuIdx == idx,
+                        onLongPress = { menuIdx = idx },
+                        onDismissMenu = { menuIdx = -1 },
+                        menu = menuBody
+                    )
                     is ChatItem.Meta -> Text(
                         "轮次 ${m.rounds}/${m.maxRounds} · tokens ${m.tokens} · 已启用 skill: ${m.skills}",
                         style = MonoStyle,
@@ -674,63 +880,6 @@ fun ChatScreen(
             },
             confirmButton = {
                 TextButton(onClick = { viewingSession = null }) { Text("关闭") }
-            }
-        )
-    }
-
-    // 长按消息：复制 / 删除该条
-    val ctx = LocalContext.current
-    actionMsg?.let { (idx, text) ->
-        AlertDialog(
-            onDismissRequest = { actionMsg = null },
-            title = { Text("消息操作") },
-            text = {
-                Column {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Text(
-                            text.take(120),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 4,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(10.dp)
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "删除只从对话页移除这条消息，不影响模型的上下文记忆。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                Row {
-                    TextButton(onClick = {
-                        clipboard.setPrimaryClip(ClipData.newPlainText("message", text))
-                        android.widget.Toast.makeText(ctx, "已复制", android.widget.Toast.LENGTH_SHORT).show()
-                        actionMsg = null
-                    }) { Text("复制", color = MaterialTheme.colorScheme.primary) }
-                    TextButton(onClick = {
-                        // 显示流与 User/Agent/Divider 条目一一对应：按序数定位真实下标
-                        val streamIdx = items.take(idx).count {
-                            it is ChatItem.User || it is ChatItem.Agent || it is ChatItem.Divider
-                        }
-                        if (engine.deleteStreamEntry(streamIdx)) items.removeAt(idx)
-                        else android.widget.Toast.makeText(
-                            ctx, "任务执行中，稍后再试", android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                        actionMsg = null
-                    }) { Text("删除", color = FailColor) }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { actionMsg = null }) { Text("取消") }
             }
         )
     }
