@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -964,6 +965,8 @@ fun SettingsScreen(engine: AgentEngine) {
 
                 SectionLabel("会话")
                 var confirmClearChats by remember { mutableStateOf(false) }
+                var confirmClearChats2 by remember { mutableStateOf(false) }
+                var clearAck by remember { mutableStateOf(false) }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedButton(onClick = { engine.startNewSession() }, shape = RoundedCornerShape(8.dp)) { Text("新会话") }
@@ -976,24 +979,69 @@ fun SettingsScreen(engine: AgentEngine) {
                     }
                 }
                 if (confirmClearChats) {
+                    // 第一级警告：明确列出会删什么
                     AlertDialog(
                         onDismissRequest = { confirmClearChats = false },
                         title = { Text("清空全部对话？") },
                         text = {
                             Text(
-                                "当前对话、历史归档会全部删除，无法恢复。\n\n人设、长期记忆、模型配置和技能不受影响。",
+                                "即将删除：当前对话、全部话题记录、所有历史归档。\n\n删除后无法找回，请确认你不再需要这些记录。",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
                         confirmButton = {
                             TextButton(onClick = {
-                                engine.clearAllChats()
                                 confirmClearChats = false
-                            }) { Text("确认清空", color = MaterialTheme.colorScheme.error) }
+                                clearAck = false
+                                confirmClearChats2 = true
+                            }) { Text("继续", color = MaterialTheme.colorScheme.error) }
                         },
                         dismissButton = {
                             TextButton(onClick = { confirmClearChats = false }) { Text("取消") }
+                        }
+                    )
+                }
+                if (confirmClearChats2) {
+                    // 第二级警告：不可逆 + 必须勾选知晓才能执行
+                    AlertDialog(
+                        onDismissRequest = { confirmClearChats2 = false },
+                        title = { Text("最后确认 · 不可逆操作") },
+                        text = {
+                            Column {
+                                Text(
+                                    "此操作不可逆！所有对话记录将被永久删除，没有任何备份，事后无法恢复。",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    "仅当你确定要彻底清除全部聊天记录时才继续。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = clearAck, onCheckedChange = { clearAck = it })
+                                    Text(
+                                        "我已知晓：不可逆、不可恢复",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    engine.clearAllChats()
+                                    confirmClearChats2 = false
+                                },
+                                enabled = clearAck
+                            ) { Text("永久删除", color = if (clearAck) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmClearChats2 = false }) { Text("取消") }
                         }
                     )
                 }
