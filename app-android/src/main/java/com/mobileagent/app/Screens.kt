@@ -26,6 +26,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -74,9 +77,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -89,6 +94,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -383,6 +389,11 @@ private fun LiquidNavBar(
             position.animateTo(tab.toFloat(), spring(dampingRatio = 0.9f, stiffness = 420f))
         }
 
+        // 长按跟随手指：按下时指示器贴着手指走，松手就近停靠并切换页面
+        val currentTab by rememberUpdatedState(tab)
+        var pressing by remember { mutableStateOf(false) }
+        val fingerX = remember { mutableFloatStateOf(0f) }
+
         // 强调色图层：录进独立 backdrop，被指示器透镜折射后呈强调色
         val tabsBackdrop = rememberLayerBackdrop()
         val indicatorBackdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop)
@@ -406,7 +417,25 @@ private fun LiquidNavBar(
                 )
                 .height(64.dp)
                 .fillMaxWidth()
-                .padding(4.dp),
+                .padding(4.dp)
+                .pointerInput(tabs) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        pressing = true
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        fingerX.floatValue = down.position.x.coerceIn(0f, size.width.toFloat())
+                        drag(down.id) { change ->
+                            fingerX.floatValue = change.position.x.coerceIn(0f, size.width.toFloat())
+                            change.consume()
+                        }
+                        pressing = false
+                        val idx = ((fingerX.floatValue / size.width) * tabs).toInt().coerceIn(0, tabs - 1)
+                        if (idx != currentTab) {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSelect(idx)
+                        }
+                    }
+                },
             verticalAlignment = Alignment.CenterVertically
         ) {
             items.forEach { (label, icon, idx) ->
@@ -419,13 +448,6 @@ private fun LiquidNavBar(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(20.dp))
-                        .clickable {
-                            if (!selected) {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onSelect(idx)
-                            }
-                        }
                         .padding(vertical = 7.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -473,7 +495,13 @@ private fun LiquidNavBar(
         Box(
             modifier = Modifier
                 .padding(horizontal = 4.dp)
-                .graphicsLayer { translationX = position.value * tabWidth }
+                .graphicsLayer {
+                    // 按住时贴手指走，松手后弹簧停靠到选中项
+                    translationX =
+                        if (pressing) (fingerX.floatValue - tabWidth / 2f)
+                            .coerceIn(0f, tabWidth * (tabs - 1))
+                        else position.value * tabWidth
+                }
                 .drawBackdrop(
                     backdrop = indicatorBackdrop,
                     shape = { Capsule() },
