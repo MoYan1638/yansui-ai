@@ -81,6 +81,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -118,6 +119,7 @@ import com.kyant.shapes.Capsule
 import com.mobileagent.core.Skill
 import java.io.File
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -390,6 +392,7 @@ private fun LiquidNavBar(
         }
 
         // 长按跟随手指：按下时指示器贴着手指走，松手就近停靠并切换页面
+        val navScope = rememberCoroutineScope()
         val currentTab by rememberUpdatedState(tab)
         var pressing by remember { mutableStateOf(false) }
         val fingerX = remember { mutableFloatStateOf(0f) }
@@ -428,11 +431,20 @@ private fun LiquidNavBar(
                             fingerX.floatValue = change.position.x.coerceIn(0f, size.width.toFloat())
                             change.consume()
                         }
-                        pressing = false
-                        val idx = ((fingerX.floatValue / size.width) * tabs).toInt().coerceIn(0, tabs - 1)
-                        if (idx != currentTab) {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onSelect(idx)
+                        // 松手无缝交接（独立协程，受限手势作用域内不能调 snapTo）：
+                        // 先把弹簧位置 snap 到手指当前位置，再就近停靠，避免回跳到原点
+                        val fullWidth = size.width.toFloat()
+                        navScope.launch {
+                            val leftEdge = (fingerX.floatValue - tabWidth / 2f)
+                                .coerceIn(0f, tabWidth * (tabs - 1))
+                            position.snapTo(leftEdge / tabWidth)
+                            pressing = false
+                            val idx = ((fingerX.floatValue / fullWidth) * tabs).toInt().coerceIn(0, tabs - 1)
+                            if (idx != currentTab) {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onSelect(idx)
+                            }
+                            position.animateTo(idx.toFloat(), spring(dampingRatio = 0.9f, stiffness = 420f))
                         }
                     }
                 },
