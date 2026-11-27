@@ -6,6 +6,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -64,6 +65,18 @@ val MonoStyle = TextStyle(
     fontFamily = FontFamily.Monospace,
     fontSize = 12.sp,
     fontWeight = FontWeight.Normal
+)
+
+/**
+ * 页面底色：中性底 + 底部一层极淡强调色晕染。
+ * 必须画进 layerBackdrop 内部（玻璃录制层里）——否则玻璃采样到的是透明像素，
+ * 模糊后变灰，整条底栏像蒙了一层灰雾。
+ */
+@Composable
+fun appBackgroundBrush(): Brush = Brush.verticalGradient(
+    0.0f to MaterialTheme.colorScheme.background,
+    0.62f to MaterialTheme.colorScheme.background,
+    1.0f to MaterialTheme.colorScheme.primary.copy(alpha = 0.075f)
 )
 
 @Composable

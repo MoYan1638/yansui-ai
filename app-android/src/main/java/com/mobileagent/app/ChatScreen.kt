@@ -778,7 +778,9 @@ fun ChatScreen(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(backdrop),
+                .layerBackdrop(backdrop)
+                // 输入条玻璃的采样层：底色必须入层，否则模糊到透明区，玻璃发灰
+                .background(appBackgroundBrush()),
             contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 150.dp + bottomInset),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {

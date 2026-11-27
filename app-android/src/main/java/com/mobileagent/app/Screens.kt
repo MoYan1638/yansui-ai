@@ -206,13 +206,7 @@ fun AppScaffold(engine: AgentEngine) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    0.0f to MaterialTheme.colorScheme.background,
-                    0.62f to MaterialTheme.colorScheme.background,
-                    1.0f to MaterialTheme.colorScheme.primary.copy(alpha = 0.075f)
-                )
-            )
+            .background(appBackgroundBrush())
             .systemBarsPadding()
     ) {
         AnimatedContent(
@@ -228,6 +222,8 @@ fun AppScaffold(engine: AgentEngine) {
             modifier = Modifier
                 .fillMaxSize()
                 .layerBackdrop(pageBackdrop)
+                // 关键：底色要画在 backdrop 层「里面」，玻璃才采得到不透明像素
+                .background(appBackgroundBrush())
         ) { t ->
             when (t) {
                 0 -> ChatScreen(engine, bottomInset = navInset, onOpenSettings = { tab = 2 })
@@ -404,7 +400,7 @@ private fun LiquidNavBar(
                         lens(24.dp.toPx(), 24.dp.toPx())
                     },
                     highlight = { Highlight.Default },
-                    shadow = { Shadow(alpha = 0.55f) },
+                    shadow = { Shadow.Default },
                     innerShadow = { InnerShadow(radius = 4.dp, alpha = 0.30f) },
                     onDrawSurface = { drawRect(containerColor) }
                 )
@@ -485,7 +481,7 @@ private fun LiquidNavBar(
                         lens(10.dp.toPx(), 14.dp.toPx(), chromaticAberration = true)
                     },
                     highlight = { Highlight.Default },
-                    shadow = { Shadow.Default.copy(alpha = 0.7f) },
+                    shadow = { Shadow.Default },
                     innerShadow = { InnerShadow(radius = 6.dp, alpha = 0.5f) },
                     onDrawSurface = {
                         drawRect(if (dark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f))

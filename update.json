@@ -1,7 +1,7 @@
 {
-  "version": "0.8.7",
-  "code": 43,
-  "notes": "底部导航补上玻璃棱边：外层胶囊加高光、内阴影与柔影，背后是纯色页面时也能看清玻璃边界；玻璃底色略提亮。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.7/yansui-ai-0.8.7-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.7/yansui-ai-0.8.7-release.apk"
+  "version": "0.8.8",
+  "code": 44,
+  "notes": "修复底部玻璃发灰：页面底色没画进玻璃采样层，玻璃模糊到透明区就蒙了一层灰雾；现在底色入层，导航与输入条恢复清透；阴影改回库默认强度，不再发脏。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.8/yansui-ai-0.8.8-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.8/yansui-ai-0.8.8-release.apk"
 }
