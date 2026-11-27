@@ -1,7 +1,7 @@
 {
-  "version": "0.8.13",
-  "code": 49,
-  "notes": "下载完成后自动拉起系统安装器，不用再去文件管理手动装；中途切走页面/杀掉应用导致广播丢失时，进设置页会自动恢复安装流程。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.13/yansui-ai-0.8.13-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.13/yansui-ai-0.8.13-release.apk"
+  "version": "0.8.14",
+  "code": 50,
+  "notes": "页面改为真实横滑（HorizontalPager）：拖导航时整页实时跟着手指走，松手就近停靠；反过来在页面上左右滑也能带动导航透镜跟手。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.14/yansui-ai-0.8.14-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.14/yansui-ai-0.8.14-release.apk"
 }

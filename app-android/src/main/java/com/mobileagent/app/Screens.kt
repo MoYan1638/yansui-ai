@@ -4,13 +4,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -30,6 +28,9 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -118,6 +119,7 @@ import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.Capsule
 import com.mobileagent.core.Skill
 import java.io.File
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -203,12 +205,16 @@ private fun Field(
 /** 主框架：三页切换（会话/技能/设置），shared-axis 转场；底部导航悬浮在页面上层 */
 @Composable
 fun AppScaffold(engine: AgentEngine) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val navScope = rememberCoroutineScope()
 
     // 液态玻璃：页面层录进 backdrop，底部导航实时模糊/折射页面内容；API<31 无 RenderEffect 回退渐变玻璃
     val realGlass = isRenderEffectSupported()
     val pageBackdrop = rememberLayerBackdrop()
     val navInset = 86.dp // 导航胶囊占用的高度，页面内容预留，避免被盖住
+
+    // HorizontalPager：页面是真实横滑的，导航拖拽/点按/页面滑动都驱动同一个 pagerState，
+    // 所以拖导航时整页跟手，反过来滑页面时导航透镜也会跟着走
+    val pagerState = rememberPagerState(pageCount = { 3 })
 
     // 页面底色带一层极淡的强调色晕染（底部最浓）：柔光玻璃需要"有东西可折"，纯平色玻璃会显脏
     Box(
@@ -217,16 +223,9 @@ fun AppScaffold(engine: AgentEngine) {
             .background(appBackgroundBrush())
             .systemBarsPadding()
     ) {
-        AnimatedContent(
-            targetState = tab,
-            transitionSpec = {
-                val dir = if (targetState > initialState) 1 else -1
-                (slideInHorizontally(tween(260, easing = AppEasing)) { dir * it / 4 } +
-                 fadeIn(tween(260, easing = AppEasing))) togetherWith
-                (slideOutHorizontally(tween(200, easing = AppEasing)) { -dir * it / 4 } +
-                 fadeOut(tween(160)))
-            },
-            label = "pages",
+        HorizontalPager(
+            state = pagerState,
+            beyondViewportPageCount = 2, // 三页常驻：保住聊天列表位置，backdrop 也不会缺内容
             modifier = Modifier
                 .fillMaxSize()
                 .layerBackdrop(pageBackdrop)
@@ -234,18 +233,21 @@ fun AppScaffold(engine: AgentEngine) {
                 .background(appBackgroundBrush())
         ) { t ->
             when (t) {
-                0 -> ChatScreen(engine, bottomInset = navInset, onOpenSettings = { tab = 2 })
+                0 -> ChatScreen(engine, bottomInset = navInset, onOpenSettings = {
+                    navScope.launch { pagerState.animateScrollToPage(2) }
+                })
                 1 -> SkillsScreen(engine, bottomInset = navInset)
                 else -> SettingsScreen(engine, bottomInset = navInset)
             }
         }
 
         GlassNavBar(
-            tab = tab,
+            tab = pagerState.currentPage,
+            pagerState = pagerState,
             backdrop = pageBackdrop,
             realGlass = realGlass,
             modifier = Modifier.align(Alignment.BottomCenter),
-            onSelect = { tab = it }
+            onSelect = { idx -> navScope.launch { pagerState.animateScrollToPage(idx) } }
         )
     }
 }
@@ -254,12 +256,13 @@ fun AppScaffold(engine: AgentEngine) {
 @Composable
 private fun GlassNavBar(
     tab: Int,
+    pagerState: PagerState,
     backdrop: Backdrop,
     realGlass: Boolean,
     modifier: Modifier = Modifier,
     onSelect: (Int) -> Unit
 ) {
-    if (realGlass) LiquidNavBar(tab, backdrop, modifier, onSelect)
+    if (realGlass) LiquidNavBar(tab, pagerState, backdrop, modifier)
     else GlassNavBarFallback(tab, modifier, onSelect)
 }
 
@@ -357,13 +360,13 @@ private fun GlassNavBarFallback(tab: Int, modifier: Modifier = Modifier, onSelec
     }
 }
 
-/** 液态玻璃滑动跟随导航（按 AndroidLiquidGlass 官方 LiquidBottomTabs 简化） */
+/** 液态玻璃滑动跟随导航（按 AndroidLiquidGlass 官方 LiquidBottomTabs 简化；页面跟随由 PagerState 驱动） */
 @Composable
 private fun LiquidNavBar(
     tab: Int,
+    pagerState: PagerState,
     backdrop: Backdrop,
-    modifier: Modifier = Modifier,
-    onSelect: (Int) -> Unit
+    modifier: Modifier = Modifier
 ) {
     val dark = isSystemInDarkTheme()
     val haptics = LocalHapticFeedback.current
@@ -385,17 +388,16 @@ private fun LiquidNavBar(
         val tabs = items.size
         val tabWidth = with(density) { (constraints.maxWidth.toFloat() - 8.dp.toPx()) / tabs }
 
-        // 滑动跟随核心：指示器位置弹簧动画滑向选中项
-        val position = remember { Animatable(tab.toFloat()) }
-        LaunchedEffect(tab) {
-            position.animateTo(tab.toFloat(), spring(dampingRatio = 0.9f, stiffness = 420f))
-        }
+        // 指示器位置由 PagerState 驱动：currentPage + offsetFraction 就是连续页码，
+        // 拖导航、滑页面、点按切页三条路径都汇到同一状态，不会打架
 
-        // 长按跟随手指：按下时指示器贴着手指走，松手就近停靠并切换页面
+        // 长按跟随手指：按下时指示器贴着手指走，同时整页 Pager 实时跟手；松手就近停靠
         val navScope = rememberCoroutineScope()
-        val currentTab by rememberUpdatedState(tab)
         var pressing by remember { mutableStateOf(false) }
         val fingerX = remember { mutableFloatStateOf(0f) }
+
+        fun pagePosAt(x: Float, width: Float): Float =
+            ((x - tabWidth / 2f) / tabWidth).coerceIn(0f, (tabs - 1).toFloat())
 
         // 强调色图层：录进独立 backdrop，被指示器透镜折射后呈强调色
         val tabsBackdrop = rememberLayerBackdrop()
@@ -427,24 +429,31 @@ private fun LiquidNavBar(
                         pressing = true
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         fingerX.floatValue = down.position.x.coerceIn(0f, size.width.toFloat())
+                        var lastIdx = pagerState.currentPage
+                        var scrollJob: Job? = null
                         drag(down.id) { change ->
                             fingerX.floatValue = change.position.x.coerceIn(0f, size.width.toFloat())
                             change.consume()
-                        }
-                        // 松手无缝交接（独立协程，受限手势作用域内不能调 snapTo）：
-                        // 先把弹簧位置 snap 到手指当前位置，再就近停靠，避免回跳到原点
-                        val fullWidth = size.width.toFloat()
-                        navScope.launch {
-                            val leftEdge = (fingerX.floatValue - tabWidth / 2f)
-                                .coerceIn(0f, tabWidth * (tabs - 1))
-                            position.snapTo(leftEdge / tabWidth)
-                            pressing = false
-                            val idx = ((fingerX.floatValue / fullWidth) * tabs).toInt().coerceIn(0, tabs - 1)
-                            if (idx != currentTab) {
+                            // 整页实时跟手：把手指位置换算成连续页码，直接驱动 Pager
+                            val pos = pagePosAt(fingerX.floatValue, size.width.toFloat())
+                            val idx = pos.toInt()
+                            if (idx != lastIdx) {
+                                lastIdx = idx
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onSelect(idx)
                             }
-                            position.animateTo(idx.toFloat(), spring(dampingRatio = 0.9f, stiffness = 420f))
+                            val frac = pos - idx
+                            scrollJob?.cancel()
+                            scrollJob = navScope.launch {
+                                if (frac <= 0.5f || idx + 1 >= tabs) pagerState.scrollToPage(idx, frac.coerceAtMost(0.5f))
+                                else pagerState.scrollToPage(idx + 1, frac - 1f)
+                            }
+                        }
+                        // 松手就近停靠：Pager 自带动画滑到最近页，指示器跟着同一状态走，无缝交接
+                        val pos = pagePosAt(fingerX.floatValue, size.width.toFloat())
+                        val idx = (pos + 0.5f).toInt().coerceIn(0, tabs - 1)
+                        pressing = false
+                        navScope.launch {
+                            pagerState.animateScrollToPage(idx)
                         }
                     }
                 },
@@ -508,11 +517,11 @@ private fun LiquidNavBar(
             modifier = Modifier
                 .padding(horizontal = 4.dp)
                 .graphicsLayer {
-                    // 按住时贴手指走，松手后弹簧停靠到选中项
+                    // 按住时贴手指走；其余时刻跟随 Pager 实际位置（页面滑动也带着透镜走）
                     translationX =
                         if (pressing) (fingerX.floatValue - tabWidth / 2f)
                             .coerceIn(0f, tabWidth * (tabs - 1))
-                        else position.value * tabWidth
+                        else (pagerState.currentPage + pagerState.currentPageOffsetFraction) * tabWidth
                 }
                 .drawBackdrop(
                     backdrop = indicatorBackdrop,
