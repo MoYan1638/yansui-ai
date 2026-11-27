@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.speech.tts.TextToSpeech
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -415,7 +414,6 @@ fun ChatScreen(
     var menuIdx by remember { mutableStateOf(-1) } // 长按浮出菜单的 items 下标（-1 无）
     var quotedText by remember { mutableStateOf<String?>(null) } // 追问引用的上文（输入框中显为引用条）
     var clearTarget by remember { mutableStateOf(-1) } // 「清除」待确认的 items 下标
-    var ttsRef by remember { mutableStateOf<TextToSpeech?>(null) }
     val ctxRef = LocalContext.current
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -459,32 +457,8 @@ fun ChatScreen(
         menuIdx = -1 // 列表结构变化时收起长按菜单，避免下标错位
     }
 
-    // 朗读引擎随页面释放
-    DisposableEffect(Unit) {
-        onDispose {
-            runCatching { ttsRef?.stop(); ttsRef?.shutdown() }
-        }
-    }
-
     fun toast(msg: String) {
         android.widget.Toast.makeText(ctxRef, msg, android.widget.Toast.LENGTH_SHORT).show()
-    }
-
-    /** 朗读：首次调用时惰性初始化 TTS，初始化完成后自动念完这条 */
-    fun speak(content: String) {
-        val existing = ttsRef
-        if (existing == null) {
-            ttsRef = TextToSpeech(ctxRef) { status ->
-                if (status == TextToSpeech.SUCCESS) {
-                    ttsRef?.language = java.util.Locale.CHINA
-                    ttsRef?.speak(content, TextToSpeech.QUEUE_FLUSH, null, "chat-msg")
-                } else toast("朗读引擎不可用")
-            }
-        } else {
-            existing.stop()
-            existing.language = java.util.Locale.CHINA
-            existing.speak(content, TextToSpeech.QUEUE_FLUSH, null, "chat-msg")
-        }
     }
 
     fun shareText(content: String) {
@@ -684,7 +658,7 @@ fun ChatScreen(
                 }
             }
             itemsIndexed(items) { idx, m ->
-                // 长按菜单内容：图标快捷行（复制/朗读/追问）+ 竖排列表（新话题继续/分享/删除）
+                // 长按菜单内容：图标快捷行（复制/追问）+ 竖排列表（新话题继续/分享/删除）
                 val menuBody: @Composable () -> Unit = {
                     val content = when (m) {
                         is ChatItem.User -> m.text
@@ -695,10 +669,6 @@ fun ChatScreen(
                         QuickAction("⧉", "复制", Modifier.weight(1f)) {
                             clipboard.setPrimaryClip(ClipData.newPlainText("message", content))
                             toast("已复制")
-                            menuIdx = -1
-                        }
-                        QuickAction("♪", "朗读", Modifier.weight(1f)) {
-                            speak(content)
                             menuIdx = -1
                         }
                         QuickAction("↩", "追问", Modifier.weight(1f)) {
