@@ -604,8 +604,8 @@ fun ChatScreen(
                     )
                 }
             }
-            Spacer(Modifier.weight(1f))
-            // 历史会话（归档的旧对话，只读回看）——与左侧「新会话」同一档样式
+            Spacer(Modifier.width(6.dp))
+            // 历史会话（归档的旧对话，只读回看）——紧跟新会话成左侧按钮组，不悬在屏幕中间
             Surface(
                 onClick = { showHistory = true },
                 shape = RoundedCornerShape(7.dp),
@@ -619,7 +619,7 @@ fun ChatScreen(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                 )
             }
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.weight(1f))
             // 模型徽章：点击弹出选模型层
             Surface(
                 onClick = { showPicker = true },
