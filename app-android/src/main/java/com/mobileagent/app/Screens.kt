@@ -4,11 +4,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -22,6 +24,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -61,6 +64,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -73,14 +77,30 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.isRenderEffectSupported
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
+import com.kyant.shapes.Capsule
 import com.mobileagent.core.Skill
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
@@ -162,13 +182,18 @@ private fun Field(
     }
 }
 
-/** 主框架：三页切换（会话/技能/设置），shared-axis 转场 */
+/** 主框架：三页切换（会话/技能/设置），shared-axis 转场；底部导航悬浮在页面上层 */
 @Composable
 fun AppScaffold(engine: AgentEngine) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
 
+    // 液态玻璃：页面层录进 backdrop，底部导航实时模糊/折射页面内容；API<31 无 RenderEffect 回退渐变玻璃
+    val realGlass = isRenderEffectSupported()
+    val pageBackdrop = rememberLayerBackdrop()
+    val navInset = 86.dp // 导航胶囊占用的高度，页面内容预留，避免被盖住
+
     // 页面底色带一层极淡的强调色晕染（底部最浓）：柔光玻璃需要"有东西可折"，纯平色玻璃会显脏
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -190,22 +215,43 @@ fun AppScaffold(engine: AgentEngine) {
                  fadeOut(tween(160)))
             },
             label = "pages",
-            modifier = Modifier.weight(1f)
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(pageBackdrop)
         ) { t ->
             when (t) {
-                0 -> ChatScreen(engine, onOpenSettings = { tab = 2 })
-                1 -> SkillsScreen(engine)
-                else -> SettingsScreen(engine)
+                0 -> ChatScreen(engine, bottomInset = navInset, onOpenSettings = { tab = 2 })
+                1 -> SkillsScreen(engine, bottomInset = navInset)
+                else -> SettingsScreen(engine, bottomInset = navInset)
             }
         }
 
-        GlassNavBar(tab) { tab = it }
+        GlassNavBar(
+            tab = tab,
+            backdrop = pageBackdrop,
+            realGlass = realGlass,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            onSelect = { tab = it }
+        )
     }
 }
 
-/** 底部导航：悬浮柔光玻璃胶囊（选中项内嵌磨砂小胶囊 + 强调色柔光） */
+/** 底部导航：真液态玻璃胶囊 + 滑动跟随透镜指示器；API<31 无 RenderEffect 回退渐变玻璃 */
 @Composable
-private fun GlassNavBar(tab: Int, onSelect: (Int) -> Unit) {
+private fun GlassNavBar(
+    tab: Int,
+    backdrop: Backdrop,
+    realGlass: Boolean,
+    modifier: Modifier = Modifier,
+    onSelect: (Int) -> Unit
+) {
+    if (realGlass) LiquidNavBar(tab, backdrop, modifier, onSelect)
+    else GlassNavBarFallback(tab, modifier, onSelect)
+}
+
+/** 回退：悬浮柔光玻璃胶囊（API<31 无 RenderEffect 用渐变玻璃，选中项内嵌磨砂小胶囊） */
+@Composable
+private fun GlassNavBarFallback(tab: Int, modifier: Modifier = Modifier, onSelect: (Int) -> Unit) {
     val dark = isSystemInDarkTheme()
     val haptics = LocalHapticFeedback.current
     val items = listOf(
@@ -214,7 +260,7 @@ private fun GlassNavBar(tab: Int, onSelect: (Int) -> Unit) {
         Triple("设置", Icons.Filled.Settings, 2)
     )
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 10.dp)
             .glass(shape = RoundedCornerShape(26.dp), elevation = 18.dp)
@@ -294,6 +340,146 @@ private fun GlassNavBar(tab: Int, onSelect: (Int) -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** 液态玻璃滑动跟随导航（按 AndroidLiquidGlass 官方 LiquidBottomTabs 简化） */
+@Composable
+private fun LiquidNavBar(
+    tab: Int,
+    backdrop: Backdrop,
+    modifier: Modifier = Modifier,
+    onSelect: (Int) -> Unit
+) {
+    val dark = isSystemInDarkTheme()
+    val haptics = LocalHapticFeedback.current
+    val accent = MaterialTheme.colorScheme.primary
+    // 玻璃底色：给模糊结果铺一层薄底，与页面同族色
+    val containerColor =
+        if (dark) Color(0xFF121418).copy(alpha = 0.40f)
+        else Color(0xFFFAFAFA).copy(alpha = 0.40f)
+    val items = listOf(
+        Triple("会话", Icons.Filled.Home, 0),
+        Triple("技能", Icons.AutoMirrored.Filled.List, 1),
+        Triple("设置", Icons.Filled.Settings, 2)
+    )
+
+    BoxWithConstraints(
+        modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 10.dp)
+    ) {
+        val density = LocalDensity.current
+        val tabs = items.size
+        val tabWidth = with(density) { (constraints.maxWidth.toFloat() - 8.dp.toPx()) / tabs }
+
+        // 滑动跟随核心：指示器位置弹簧动画滑向选中项
+        val position = remember { Animatable(tab.toFloat()) }
+        LaunchedEffect(tab) {
+            position.animateTo(tab.toFloat(), spring(dampingRatio = 0.9f, stiffness = 420f))
+        }
+
+        // 强调色图层：录进独立 backdrop，被指示器透镜折射后呈强调色
+        val tabsBackdrop = rememberLayerBackdrop()
+        val indicatorBackdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop)
+
+        // ① 外层玻璃胶囊：实时模糊折射页面内容
+        Row(
+            modifier = Modifier
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { Capsule() },
+                    effects = {
+                        vibrancy()
+                        blur(8.dp.toPx())
+                        lens(24.dp.toPx(), 24.dp.toPx())
+                    },
+                    onDrawSurface = { drawRect(containerColor) }
+                )
+                .height(64.dp)
+                .fillMaxWidth()
+                .padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items.forEach { (label, icon, idx) ->
+                val selected = tab == idx
+                val tint by animateColorAsState(
+                    targetValue = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                    animationSpec = tween(220, easing = AppEasing),
+                    label = "navTint$idx"
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable {
+                            if (!selected) {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onSelect(idx)
+                            }
+                        }
+                        .padding(vertical = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(21.dp))
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            label,
+                            fontSize = 10.5.sp,
+                            color = tint,
+                            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        }
+
+        // ② 隐藏的强调色同款图层（不显示、只录进 backdrop 供透镜取样）：
+        //    alpha 在 layerBackdrop 外层 → 记录的是全色内容；染色 graphicsLayer 在内层 → 记录的是染色后内容
+        Row(
+            modifier = Modifier
+                .alpha(0f)
+                .layerBackdrop(tabsBackdrop)
+                .height(64.dp)
+                .fillMaxWidth()
+                .padding(4.dp)
+                .graphicsLayer(colorFilter = ColorFilter.tint(accent)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items.forEach { (_, icon, _) ->
+                Box(
+                    modifier = Modifier.weight(1f).padding(vertical = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(icon, contentDescription = null, tint = Color.Black, modifier = Modifier.size(21.dp))
+                        Spacer(Modifier.height(2.dp))
+                        Text(" ", fontSize = 10.5.sp, color = Color.Black)
+                    }
+                }
+            }
+        }
+
+        // ③ 滑动跟随的玻璃透镜指示器：折射外层玻璃 + 强调色图标层，带色散、高光与内阴影
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 4.dp)
+                .graphicsLayer { translationX = position.value * tabWidth }
+                .drawBackdrop(
+                    backdrop = indicatorBackdrop,
+                    shape = { Capsule() },
+                    effects = {
+                        lens(10.dp.toPx(), 14.dp.toPx(), chromaticAberration = true)
+                    },
+                    highlight = { Highlight.Default },
+                    shadow = { Shadow.Default.copy(alpha = 0.7f) },
+                    innerShadow = { InnerShadow(radius = 6.dp, alpha = 0.5f) },
+                    onDrawSurface = {
+                        drawRect(if (dark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f))
+                    }
+                )
+                .height(56.dp)
+                .fillMaxWidth(1f / tabs)
+        )
     }
 }
 
@@ -715,7 +901,7 @@ private fun PermRow(name: String, desc: String) {
 private val GateMark = "【合规闸门】"
 
 @Composable
-fun SkillsScreen(engine: AgentEngine) {
+fun SkillsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     var skills by remember { mutableStateOf(engine.skills) }
     var query by remember { mutableStateOf("") }
     var confirmSkill by remember { mutableStateOf<Skill?>(null) }
@@ -779,7 +965,7 @@ fun SkillsScreen(engine: AgentEngine) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(vertical = 12.dp)
+            contentPadding = PaddingValues(top = 12.dp, bottom = 12.dp + bottomInset)
         ) {
             items(shown, key = { it.name }) { skill ->
                 val gated = skill.body.startsWith(GateMark)
@@ -937,7 +1123,7 @@ private fun PersonaMemoryDialog(
 }
 
 @Composable
-fun SettingsScreen(engine: AgentEngine) {
+fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     val cfg = engine.config
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var baseUrl by remember(cfg) { mutableStateOf(cfg?.baseUrl ?: "https://api.deepseek.com/v1") }
@@ -982,7 +1168,7 @@ fun SettingsScreen(engine: AgentEngine) {
             modifier = Modifier.padding(vertical = 14.dp)
         )
 
-        LazyColumn(contentPadding = PaddingValues(bottom = 20.dp)) {
+        LazyColumn(contentPadding = PaddingValues(bottom = 20.dp + bottomInset)) {
             item {
                 TextButton(onClick = { showGuide = true }) {
                     Text("？如何获取 API Key · 各平台开通教程", style = MaterialTheme.typography.bodySmall)

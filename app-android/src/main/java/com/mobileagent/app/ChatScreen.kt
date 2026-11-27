@@ -79,6 +79,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -506,6 +507,7 @@ private fun ToolCard(item: ChatItem.Tool) {
 fun ChatScreen(
     engine: AgentEngine,
     modifier: Modifier = Modifier,
+    bottomInset: Dp = 0.dp, // 底部导航胶囊占用高度：输入条抬到导航上方，消息从导航玻璃下滑过
     onOpenSettings: () -> Unit = {},
 ) {
     val items = remember { mutableStateListOf<ChatItem>() }
@@ -777,7 +779,7 @@ fun ChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .layerBackdrop(backdrop),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 150.dp),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 150.dp + bottomInset),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (items.isEmpty()) {
@@ -911,27 +913,30 @@ fun ChatScreen(
             }
         }
 
-        // 底部渐隐遮罩：文字滑到玻璃条附近自然淡掉，玻璃才"像玻璃"而不是半透明色块
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(168.dp)
-                .background(
-                    Brush.verticalGradient(
-                        0.0f to Color.Transparent,
-                        0.60f to MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
-                        1.0f to MaterialTheme.colorScheme.background
+        // 底部渐隐遮罩：仅回退玻璃（无模糊能力）需要它收口；真玻璃下导航/输入条自带模糊，
+        // 消息要一路滑进导航玻璃里才有效果，遮罩必须去掉
+        if (!realGlass) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(168.dp + bottomInset)
+                    .background(
+                        Brush.verticalGradient(
+                            0.0f to Color.Transparent,
+                            0.60f to MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
+                            1.0f to MaterialTheme.colorScheme.background
+                        )
                     )
-                )
-        )
+            )
+        }
 
         // 输入栏：悬浮柔光玻璃胶囊（原型：input-chip + 方形 accent 发送键 + skill-hint）
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(start = 10.dp, end = 10.dp, bottom = 8.dp)
+                .padding(start = 10.dp, end = 10.dp, bottom = 8.dp + bottomInset)
                 .then(
                     if (realGlass) {
                         Modifier.drawBackdrop(
