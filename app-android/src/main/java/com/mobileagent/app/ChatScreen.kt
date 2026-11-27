@@ -349,18 +349,30 @@ fun ChatScreen(
             .fillMaxSize()
             .imePadding()
     ) {
-        // 顶栏（原型：「新会话」+ 模型徽章）
+        // 顶栏（左上角「＋」开新话题；右侧：历史入口 + 模型徽章）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "新会话",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+            // 开新话题：归档当前对话 + 新上下文（旧记录留在对话流里）
+            Surface(
+                onClick = { startNewTopic() },
+                enabled = !running,
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Text(
+                    "＋",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (running) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 1.dp)
+                )
+            }
             Spacer(Modifier.weight(1f))
             // 历史会话（归档的旧对话，只读回看）
             Text(
@@ -373,24 +385,6 @@ fun ChatScreen(
                     .padding(horizontal = 6.dp, vertical = 4.dp)
             )
             Spacer(Modifier.width(2.dp))
-            // 开新话题：归档当前对话 + 新上下文
-            Surface(
-                onClick = { startNewTopic() },
-                enabled = !running,
-                shape = RoundedCornerShape(6.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-            ) {
-                Text(
-                    "＋",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (running) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp)
-                )
-            }
-            Spacer(Modifier.width(8.dp))
             // 模型徽章：点击弹出选模型层
             Surface(
                 onClick = { showPicker = true },
