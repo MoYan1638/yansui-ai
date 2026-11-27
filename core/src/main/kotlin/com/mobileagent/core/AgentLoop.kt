@@ -153,6 +153,7 @@ class AgentLoop(
             append("2. 每次工具调用后根据观察结果决定下一步，不要臆测结果\n")
             append("3. 敏感操作（删除、支付、泄露隐私）必须先征询用户\n")
             append("4. 任务完成后简洁汇报做了什么、结果在哪\n")
+            append("5. 长期记忆（重要）：当对话中出现用户的个人信息、喜好厌恶、重要日期、约定、项目背景等值得长期记住的事，主动调用 memory_write 记一条简洁事实（一行一条，不要每句都记）；对话结束前回顾本轮，有漏记的重要信息补记\n")
         } + skillSection(userInput) + usageSection + (memorySection(userInput) ?: "")
 
         // 轻量规划器：长任务先出计划（自研降级：失败跳过）

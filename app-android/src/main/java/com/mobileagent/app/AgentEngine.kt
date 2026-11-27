@@ -8,6 +8,7 @@ import com.mobileagent.core.ModelConfig
 import com.mobileagent.core.Skill
 import com.mobileagent.core.SkillLoader
 import com.mobileagent.core.readTextCompat
+import com.mobileagent.core.appendTextCompat
 import com.mobileagent.core.writeTextCompat
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -15,6 +16,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -350,6 +352,67 @@ class AgentEngine(context: Context) {
     fun saveMemory(text: String) {
         memoryDir.createDirectories()
         memoryDir.resolve("memory.md").writeTextCompat(text.trim())
+    }
+
+    /**
+     * 从历史对话提炼记忆与人设（一次性模型调用，无工具）。
+     * 覆盖当前会话 + 最近 2 个归档会话；结果回调给 UI 确认后落盘。
+     * 返回 false 表示忙或未连模型。
+     */
+    fun distillFromHistory(
+        onDone: (memoryPart: String, personaPart: String) -> Unit,
+        onFailed: (String) -> Unit,
+    ) {
+        val cfg = config
+        if (cfg == null) { onFailed("尚未连接模型"); return }
+        if (!busy.compareAndSet(false, true)) { onFailed("当前有任务正在执行"); return }
+        Thread {
+            try {
+                val sb = StringBuilder()
+                fun feed(pairs: List<Pair<String, String>>) {
+                    pairs.takeLast(60).forEach { (r, c) ->
+                        sb.append(if (r == "user") "用户: " else "AI: ").append(c.take(400)).append('\n')
+                    }
+                }
+                feed(restoredChat())
+                archivedSessions().take(2).forEach { feed(sessionChat(it.id)) }
+                if (sb.isBlank()) { onFailed("还没有历史对话可提炼"); return@Thread }
+                val prompt = "以下是你和用户的历史对话记录。请提炼值得长期记住的信息，输出两段（严格用这两个标题，不要多余的话）：\n" +
+                    "## 记忆\n- 用户个人信息、喜好厌恶、重要日期、约定、项目背景，一行一条简洁事实（没有就写「无」）\n" +
+                    "## 人设建议\n- 综合对话中用户对 AI 角色的期望，给一段 60 字以内的角色设定（性格、称呼、语气；没有则写「无」）\n\n" +
+                    "对话记录：\n${sb.take(12000)}"
+                val resp = ModelClient(cfg).chat(
+                    listOf(buildJsonObject { put("role", JsonPrimitive("user")); put("content", JsonPrimitive(prompt)) }),
+                    emptyList()
+                )
+                val content = (((resp["choices"]?.jsonArray?.firstOrNull() as? JsonObject)
+                    ?.get("message") as? JsonObject)
+                    ?.get("content") as? JsonPrimitive)?.content ?: ""
+                val memPart = content.substringAfter("## 记忆", "").substringBefore("##").trim()
+                val perPart = content.substringAfter("## 人设建议", "").trim()
+                if (memPart.isBlank() && perPart.isBlank()) { onFailed("提炼失败，模型没给出有效内容"); return@Thread }
+                onDone(memPart.removePrefix("-").trim(), perPart.trim())
+            } catch (e: Exception) {
+                onFailed(e.message ?: e.javaClass.simpleName)
+            } catch (e: Throwable) {
+                onFailed("${e.javaClass.simpleName}: ${e.message ?: ""}")
+            } finally {
+                busy.set(false)
+            }
+        }.start()
+    }
+
+    /** 把提炼结果落盘：记忆追加、人设仅在为空时写入（不覆盖用户已写的） */
+    fun applyDistilled(memoryPart: String, personaPart: String) {
+        if (memoryPart.isNotBlank() && memoryPart != "无") {
+            memoryDir.createDirectories()
+            memoryPart.lineSequence().filter { it.isNotBlank() }.forEach {
+                memoryDir.resolve("memory.md").appendTextCompat("- ${it.removePrefix("- ").trim()}\n")
+            }
+        }
+        if (personaPart.isNotBlank() && personaPart != "无" && persona().isBlank()) {
+            savePersona(personaPart)
+        }
     }
 
     // ---- 技能开关（技能页 Switch；关闭的技能不注入提示词） ----

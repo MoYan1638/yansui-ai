@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -975,16 +977,85 @@ fun SettingsScreen(engine: AgentEngine) {
                 SectionLabel("人设与记忆")
                 var editPersona by remember { mutableStateOf(false) }
                 var editMemory by remember { mutableStateOf(false) }
+                var distilling by remember { mutableStateOf(false) }
+                var distillResult by remember { mutableStateOf<Pair<String, String>?>(null) }
+                var distillError by remember { mutableStateOf<String?>(null) }
+                val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(onClick = { editPersona = true }, shape = RoundedCornerShape(8.dp)) { Text("编辑人设") }
                     OutlinedButton(onClick = { editMemory = true }, shape = RoundedCornerShape(8.dp)) { Text("编辑记忆") }
+                    OutlinedButton(
+                        onClick = {
+                            distilling = true; distillError = null
+                            engine.distillFromHistory(
+                                onDone = { m, p -> mainHandler.post { distilling = false; distillResult = m to p } },
+                                onFailed = { e -> mainHandler.post { distilling = false; distillError = e } }
+                            )
+                        },
+                        enabled = !distilling,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        if (distilling) {
+                            CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                        } else {
+                            Text("从历史提炼")
+                        }
+                    }
+                }
+                distillError?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "人设是「她」的性格与称呼（每次对话都生效）；记忆是 Agent 跨会话保存的笔记，都可以直接改",
+                    "人设是「她」的性格与称呼（每次对话都生效）；记忆是 Agent 跨会话保存的笔记，都可以直接改；「从历史提炼」会翻最近的对话自动总结，确认后存入",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                // 提炼结果确认
+                distillResult?.let { (mem, per) ->
+                    AlertDialog(
+                        onDismissRequest = { distillResult = null },
+                        title = { Text("提炼结果") },
+                        text = {
+                            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                                Text("记忆", style = MaterialTheme.typography.titleSmall)
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    mem.ifBlank { "（无）" },
+                                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 19.sp),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Text("人设建议", style = MaterialTheme.typography.titleSmall)
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    per.ifBlank { "（无）" },
+                                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 19.sp),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (engine.persona().isNotBlank() && per.isNotBlank()) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        "已有自定义人设，人设建议不会自动覆盖，可到「编辑人设」参考手填",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                engine.applyDistilled(mem, per)
+                                distillResult = null
+                            }) { Text("存入") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { distillResult = null }) { Text("丢弃") }
+                        }
+                    )
+                }
 
                 if (editPersona) {
                     PersonaMemoryDialog(
