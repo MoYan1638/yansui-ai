@@ -376,6 +376,7 @@ fun ChatScreen(
     var currentModel by remember { mutableStateOf(engine.config?.model) }
     var pendingConfirm by remember { mutableStateOf<Pair<String, (Boolean) -> Unit>?>(null) }
     var menuIdx by remember { mutableStateOf(-1) } // 长按浮出菜单的 items 下标（-1 无）
+    var clearTarget by remember { mutableStateOf(-1) } // 「清除」待确认的 items 下标
     var ttsRef by remember { mutableStateOf<TextToSpeech?>(null) }
     val ctxRef = LocalContext.current
     val clipboard = ctxRef.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -447,11 +448,17 @@ fun ChatScreen(
     }
 
     /** 删除显示流里的这条消息（工具卡片/Meta 行不入流，无需处理） */
+    fun streamIndexOf(idx: Int) = items.take(idx).count {
+        it is ChatItem.User || it is ChatItem.Agent || it is ChatItem.Divider
+    }
+
     fun deleteItem(idx: Int) {
-        val streamIdx = items.take(idx).count {
-            it is ChatItem.User || it is ChatItem.Agent || it is ChatItem.Divider
-        }
-        if (engine.deleteStreamEntry(streamIdx)) items.removeAt(idx) else toast("任务执行中，稍后再试")
+        if (engine.deleteStreamEntry(streamIndexOf(idx))) items.removeAt(idx) else toast("任务执行中，稍后再试")
+    }
+
+    /** 清除：显示流 + 模型上下文一起忘掉 */
+    fun clearItem(idx: Int) {
+        if (engine.clearStreamEntry(streamIndexOf(idx))) items.removeAt(idx) else toast("任务执行中，稍后再试")
     }
 
     fun activeSkillNames() = engine.skills
@@ -660,8 +667,12 @@ fun ChatScreen(
                         menuIdx = -1
                     }
                     MenuDivider()
-                    MenuRow("✕", "删除", danger = true) {
+                    MenuRow("✕", "删除（仅对话页）", danger = true) {
                         deleteItem(idx)
+                        menuIdx = -1
+                    }
+                    MenuRow("⌦", "清除（含上下文）", danger = true) {
+                        clearTarget = idx
                         menuIdx = -1
                     }
                 }
@@ -880,6 +891,29 @@ fun ChatScreen(
             },
             confirmButton = {
                 TextButton(onClick = { viewingSession = null }) { Text("关闭") }
+            }
+        )
+    }
+
+    // 「清除（含上下文）」确认：不可恢复，明确告知后果
+    clearTarget.takeIf { it >= 0 }?.let { idx ->
+        AlertDialog(
+            onDismissRequest = { clearTarget = -1 },
+            title = { Text("清除这条消息？") },
+            text = {
+                Text(
+                    "将从对话页移除，并让模型彻底忘记这段上下文。此操作不可恢复；如需保留，请选「删除（仅对话页）」。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { clearItem(idx); clearTarget = -1 }) {
+                    Text("清除", color = FailColor)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { clearTarget = -1 }) { Text("取消") }
             }
         )
     }

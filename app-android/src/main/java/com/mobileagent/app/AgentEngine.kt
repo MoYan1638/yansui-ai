@@ -284,6 +284,50 @@ class AgentEngine(context: Context) {
         return true
     }
 
+    /** 显示流第 n 条可见消息在 history 数组中的原始下标（divider 不占位） */
+    private fun historySourceIndex(visibleIdx: Int): Int {
+        var vi = 0
+        history.forEachIndexed { i, el ->
+            val obj = el as? JsonObject ?: return@forEachIndexed
+            val role = obj["role"]?.jsonPrimitive?.content ?: return@forEachIndexed
+            if (role != "user" && role != "assistant") return@forEachIndexed
+            val content = (obj["content"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                ?: (obj["content"] as? JsonArray)?.joinToString("\n") {
+                    (it as? JsonObject)?.get("text")?.jsonPrimitive?.content ?: ""
+                } ?: return@forEachIndexed
+            if (content.isBlank()) return@forEachIndexed
+            if (vi == visibleIdx) return i
+            vi++
+        }
+        return -1
+    }
+
+    /**
+     * 清除一条消息：显示流 + 模型上下文一起删（「清除」档，不可恢复）。
+     * assistant 带工具调用时，把紧随其后的 tool 结果一并删掉，避免孤儿 tool 消息报错。
+     */
+    fun clearStreamEntry(index: Int): Boolean {
+        if (busy.get()) return false
+        if (index < 0 || index >= stream.size) return false
+        val visibleIdx = stream.take(index).count { it["t"]?.jsonPrimitive?.contentOrNull != "d" }
+        stream.removeAt(index)
+        saveStream()
+        runCatching {
+            val src = historySourceIndex(visibleIdx)
+            if (src >= 0) {
+                val isToolCall = (history[src] as? JsonObject)?.get("tool_calls") != null
+                history.removeAt(src)
+                if (isToolCall) {
+                    while (src < history.size &&
+                        (history[src] as? JsonObject)?.get("role")?.jsonPrimitive?.content == "tool"
+                    ) history.removeAt(src)
+                }
+                saveHistory()
+            }
+        }
+        return true
+    }
+
     // ---- 历史会话（新会话=归档旧对话 + 开新上下文，记录永不丢） ----
 
     /** 归档会话的摘要，供「历史」列表展示 */
