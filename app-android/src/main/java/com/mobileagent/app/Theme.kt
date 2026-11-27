@@ -8,6 +8,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -68,16 +69,12 @@ val MonoStyle = TextStyle(
 )
 
 /**
- * 页面底色：中性底 + 底部一层极淡强调色晕染。
+ * 页面底色：整页统一纯色，跟随明暗主题，不做渐变晕染。
  * 必须画进 layerBackdrop 内部（玻璃录制层里）——否则玻璃采样到的是透明像素，
- * 模糊后变灰，整条底栏像蒙了一层灰雾。
+ * 模糊后变灰，整条底栏像蒙了一层灰雾；纯色同样是不透明像素，玻璃照常能采到。
  */
 @Composable
-fun appBackgroundBrush(): Brush = Brush.verticalGradient(
-    0.0f to MaterialTheme.colorScheme.background,
-    0.62f to MaterialTheme.colorScheme.background,
-    1.0f to MaterialTheme.colorScheme.primary.copy(alpha = 0.075f)
-)
+fun appBackgroundBrush(): Brush = SolidColor(MaterialTheme.colorScheme.background)
 
 @Composable
 fun MobileAgentTheme(content: @Composable () -> Unit) {

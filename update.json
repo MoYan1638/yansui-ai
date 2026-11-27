@@ -1,7 +1,7 @@
 {
-  "version": "0.8.15",
-  "code": 51,
-  "notes": "修复下载完成后一直显示“下载中”不弹安装：完成广播改为 EXPORTED 才能收到系统下载器的通知；轮询同时检查任务状态，广播丢失也能在半秒内发现下完并自动拉起安装器。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.15/yansui-ai-0.8.15-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.15/yansui-ai-0.8.15-release.apk"
+  "version": "0.8.16",
+  "code": 52,
+  "notes": "页面底色改为整页统一纯色，去掉底部晕染渐变——白天不再发黑、夜间不再发亮。玻璃的高光/内阴影棱边仍保留，纯色背景下也能看清边界。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.16/yansui-ai-0.8.16-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.16/yansui-ai-0.8.16-release.apk"
 }
