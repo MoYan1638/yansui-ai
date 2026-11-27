@@ -67,8 +67,16 @@ object SkillUpdater {
 
         for (rel in manifest.files) {
             if (!isSafeRel(rel)) throw IOException("清单含非法路径: $rel")
-            val bytes = download("$BASE_RAW/$rel") ?: download("$BASE_MIRROR/$rel")
+            val bust = if (rel == "SKILL.md") "?t=${System.currentTimeMillis()}" else ""
+            val bytes = download("$BASE_RAW/$rel$bust") ?: download("$BASE_MIRROR/$rel$bust")
                 ?: throw IOException("下载失败: $rel")
+            // 内容校验：SKILL.md 必须是移动端适配版，防止镜像缓存/源被换回上游原版时静默装错
+            if (rel == "SKILL.md") {
+                val head = String(bytes, Charsets.UTF_8).take(600)
+                if (!head.contains("移动端适配版")) {
+                    throw IOException("更新源内容异常（疑似上游原版），已中止更新，本地版本未改动")
+                }
+            }
             val target = skillDir.resolve(rel)
             target.parent?.let { Files.createDirectories(it) }
             Files.write(target, bytes)
@@ -99,7 +107,11 @@ object SkillUpdater {
     }.getOrNull()
 
     private fun fetchManifest(): Manifest? {
-        val body = download("$BASE_RAW/update.json") ?: download("$BASE_MIRROR/update.json") ?: return null
+        // 带时间戳破 CDN/镜像缓存：更新源曾出现过远端已换新版、镜像仍返回旧内容的情况
+        val bust = "?t=${System.currentTimeMillis()}"
+        val body = download("$BASE_RAW/update.json$bust")
+            ?: download("$BASE_MIRROR/update.json$bust")
+            ?: return null
         return runCatching {
             val obj = Json.parseToJsonElement(String(body, Charsets.UTF_8)).jsonObject
             Manifest(
