@@ -934,33 +934,39 @@ fun ChatScreen(
         }
 
         // 输入栏：悬浮柔光玻璃胶囊（原型：input-chip + 方形 accent 发送键 + skill-hint）
+        // 输入气泡与「已启用」技能提示拆成两个独立气泡
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(start = 10.dp, end = 10.dp, bottom = 8.dp + bottomInset)
-                .then(
-                    if (realGlass) {
-                        Modifier.drawBackdrop(
-                            backdrop = backdrop,
-                            shape = { Capsule() },
-                            effects = {
-                                vibrancy()
-                                blur(14.dp.toPx())
-                                lens(18.dp.toPx(), 18.dp.toPx())
-                            },
-                            onDrawSurface = {
-                                drawRect(
-                                    if (darkTheme) Color(0xFF121418).copy(alpha = 0.30f)
-                                    else Color.White.copy(alpha = 0.40f)
-                                )
-                            }
-                        )
-                    } else {
-                        Modifier.glass(shape = RoundedCornerShape(22.dp), elevation = 16.dp)
-                    }
-                )
+                .padding(start = 10.dp, end = 10.dp, bottom = 8.dp + bottomInset),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (realGlass) {
+                            Modifier.drawBackdrop(
+                                backdrop = backdrop,
+                                shape = { Capsule() },
+                                effects = {
+                                    vibrancy()
+                                    blur(14.dp.toPx())
+                                    lens(18.dp.toPx(), 18.dp.toPx())
+                                },
+                                onDrawSurface = {
+                                    drawRect(
+                                        if (darkTheme) Color(0xFF121418).copy(alpha = 0.30f)
+                                        else Color.White.copy(alpha = 0.40f)
+                                    )
+                                }
+                            )
+                        } else {
+                            Modifier.glass(shape = RoundedCornerShape(22.dp), elevation = 16.dp)
+                        }
+                    )
+            ) {
             // 追问时挂的引用：上方给两个快捷追问（学豆包：解释一下 / 详细展开）；随引用条一起滑入滑出
             var lastQuote by remember { mutableStateOf("") }
             quotedText?.let { lastQuote = it }
@@ -1105,10 +1111,34 @@ fun ChatScreen(
                     }
                 }
             }
+            }
+
+            // 「已启用」技能提示：独立小玻璃气泡，浮在输入气泡左下方
             val hint = activeSkillNames()
             if (hint.isNotBlank()) {
                 Row(
-                    modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 1.dp, bottom = 8.dp),
+                    modifier = Modifier
+                        .then(
+                            if (realGlass) {
+                                Modifier.drawBackdrop(
+                                    backdrop = backdrop,
+                                    shape = { Capsule() },
+                                    effects = {
+                                        vibrancy()
+                                        blur(8.dp.toPx())
+                                    },
+                                    onDrawSurface = {
+                                        drawRect(
+                                            if (darkTheme) Color(0xFF121418).copy(alpha = 0.22f)
+                                            else Color.White.copy(alpha = 0.45f)
+                                        )
+                                    }
+                                )
+                            } else {
+                                Modifier.glass(shape = RoundedCornerShape(14.dp), elevation = 8.dp)
+                            }
+                        )
+                        .padding(start = 12.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
