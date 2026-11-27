@@ -12,13 +12,32 @@ android {
         applicationId = "com.mobileagent.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 34
-        versionName = "0.7.8"
+        versionCode = 35
+        versionName = "0.7.9"
+    }
+
+    // 正式签名：密钥与密码在 signing/signing.properties（不入库，本地保管；丢了就无法再升级）
+    val signingProps: Map<String, String> = rootProject.file("signing/signing.properties").let { f ->
+        if (f.exists()) f.readLines().mapNotNull {
+            val i = it.indexOf('=')
+            if (i > 0) it.substring(0, i).trim() to it.substring(i + 1).trim() else null
+        }.toMap() else emptyMap()
+    }
+    signingConfigs {
+        create("release") {
+            if (signingProps.isNotEmpty()) {
+                storeFile = rootProject.file(signingProps["storeFile"]!!)
+                storePassword = signingProps["storePassword"]
+                keyAlias = signingProps["keyAlias"]
+                keyPassword = signingProps["keyPassword"]
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
