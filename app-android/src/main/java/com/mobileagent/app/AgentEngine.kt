@@ -20,6 +20,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -43,12 +44,14 @@ class AgentEngine(context: Context) {
     private val keysPath: Path = root.resolve("keys.json")
     private val skillStatePath: Path = root.resolve("data").resolve("skills-state.json")
     private val historyPath: Path = root.resolve("data").resolve("history.json")
+    private val streamPath: Path = root.resolve("data").resolve("stream.json") // 对话页完整显示流（含历史话题）
     private val sessionsDir: Path = root.resolve("data").resolve("sessions") // 已归档的历史会话
     private val personaPath: Path = root.resolve("data").resolve("persona.md") // 用户自定义人设
     private val memoryDir: Path = root.resolve("data").resolve("memory")
 
     private val busy = AtomicBoolean(false)
     private val history = mutableListOf<JsonElement>() // 受 busy 标志保护，单任务串行
+    private val stream = mutableListOf<JsonObject>()   // 对话页显示流：跨话题持久，模型上下文只跟 history
     private val providerKeys = mutableMapOf<String, String>() // 厂商 → Key，切换模型复用
     private val disabledSkills = mutableSetOf<String>() // 技能页开关的关闭状态，持久化
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -84,6 +87,7 @@ class AgentEngine(context: Context) {
         refreshSkills()
         loadSkillState()
         loadHistory() // 手机端系统随时杀后台，会话从检查点恢复（借鉴 Octop 的 restart-safe，自研 JSON 实现）
+        loadStream()  // 显示流恢复（含历史话题分隔；首次升级时从 history 迁移）
         config = ModelConfig.load(configPath)
         loadKeys()
         // 老配置（手填时代）把 Key 归档到厂商名下，切换模型时直接可用
@@ -226,6 +230,51 @@ class AgentEngine(context: Context) {
         role to content
     }
 
+    // ---- 显示流（对话页完整记录，跨话题保留；与模型上下文 history 分离） ----
+
+    private fun msgEntry(role: String, content: String): JsonObject = buildJsonObject {
+        put("t", JsonPrimitive("m")); put("r", JsonPrimitive(role)); put("c", JsonPrimitive(content))
+    }
+
+    private fun loadStream() {
+        stream.clear()
+        runCatching {
+            if (Files.exists(streamPath)) {
+                stream.addAll(Json.parseToJsonElement(streamPath.readTextCompat()).jsonArray.map { it.jsonObject })
+            }
+        }
+        // 老版本升级迁移：有上下文检查点但显示流为空 → 把当前会话灌进显示流
+        if (stream.isEmpty()) {
+            val restored = restoredChat()
+            if (restored.isNotEmpty()) {
+                restored.forEach { (r, c) -> stream.add(msgEntry(r, c)) }
+                saveStream()
+            }
+        }
+    }
+
+    private fun saveStream() {
+        runCatching {
+            streamPath.parent?.createDirectories()
+            streamPath.writeTextCompat(JsonArray(stream).toString())
+        }
+    }
+
+    /** 记录一轮可见对话到显示流（工具卡片不入流）；跨话题持久保留 */
+    fun recordTurn(userText: String, replyText: String) {
+        stream.add(msgEntry("user", userText))
+        if (replyText.isNotBlank()) stream.add(msgEntry("assistant", replyText))
+        saveStream()
+    }
+
+    /** 对话页显示流条目："divider" to 标签，或 role to 内容 */
+    fun streamEntries(): List<Pair<String, String>> = stream.map {
+        if (it["t"]?.jsonPrimitive?.contentOrNull == "d")
+            "divider" to (it["l"]?.jsonPrimitive?.contentOrNull ?: "")
+        else
+            (it["r"]?.jsonPrimitive?.contentOrNull ?: "") to (it["c"]?.jsonPrimitive?.contentOrNull ?: "")
+    }
+
     // ---- 历史会话（新会话=归档旧对话 + 开新上下文，记录永不丢） ----
 
     /** 归档会话的摘要，供「历史」列表展示 */
@@ -289,6 +338,11 @@ class AgentEngine(context: Context) {
         val archived = archiveHistory()
         history.clear()
         runCatching { Files.deleteIfExists(historyPath) } // 检查点同步清空
+        // 显示流不清空：插入话题分隔，旧记录继续留在对话页
+        stream.add(buildJsonObject {
+            put("t", JsonPrimitive("d")); put("l", JsonPrimitive("新话题 · 上次对话已存入历史"))
+        })
+        saveStream()
         return archived ?: ""
     }
 

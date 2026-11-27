@@ -240,11 +240,15 @@ fun ChatScreen(
 ) {
     val items = remember { mutableStateListOf<ChatItem>() }
 
-    // 从检查点恢复上次对话（手机系统杀后台/退出重开后，界面与模型上下文同步重建）
+    // 从显示流恢复完整对话（含历史话题分隔；手机杀后台/退出重开后记录仍在）
     LaunchedEffect(engine) {
         if (items.isEmpty()) {
-            engine.restoredChat().forEach { (role, content) ->
-                items += if (role == "user") ChatItem.User(content) else ChatItem.Agent(content)
+            engine.streamEntries().forEach { (tag, content) ->
+                when (tag) {
+                    "divider" -> items += ChatItem.Divider(content)
+                    "user" -> items += ChatItem.User(content)
+                    "assistant" -> items += ChatItem.Agent(content)
+                }
             }
         }
     }
@@ -325,6 +329,7 @@ fun ChatScreen(
                             tokens = tin + tout,
                             skills = engine.skills.count { engine.isSkillEnabled(it.name) }
                         )
+                        engine.recordTurn(text, reply) // 可见对话持久进显示流
                         running = false
                     }
                 },
@@ -332,6 +337,7 @@ fun ChatScreen(
                     main.post {
                         items += ChatItem.Agent("⚠ 出错了：$msg")
                         running = false
+                        engine.recordTurn(text, "⚠ 出错了：$msg")
                     }
                 }
             )
