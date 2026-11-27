@@ -981,9 +981,23 @@ fun SettingsScreen(engine: AgentEngine) {
                 var distillResult by remember { mutableStateOf<Pair<String, String>?>(null) }
                 var distillError by remember { mutableStateOf<String?>(null) }
                 val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = { editPersona = true }, shape = RoundedCornerShape(8.dp)) { Text("编辑人设") }
-                    OutlinedButton(onClick = { editMemory = true }, shape = RoundedCornerShape(8.dp)) { Text("编辑记忆") }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val btnPad = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                    OutlinedButton(
+                        onClick = { editPersona = true },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = btnPad,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("编辑人设", fontSize = 13.sp, maxLines = 1, softWrap = false) }
+                    OutlinedButton(
+                        onClick = { editMemory = true },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = btnPad,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("编辑记忆", fontSize = 13.sp, maxLines = 1, softWrap = false) }
                     OutlinedButton(
                         onClick = {
                             distilling = true; distillError = null
@@ -993,12 +1007,16 @@ fun SettingsScreen(engine: AgentEngine) {
                             )
                         },
                         enabled = !distilling,
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = btnPad,
+                        modifier = Modifier.weight(1f)
                     ) {
-                        if (distilling) {
-                            CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
-                        } else {
-                            Text("从历史提炼")
+                        Box(modifier = Modifier.height(16.dp), contentAlignment = Alignment.Center) {
+                            if (distilling) {
+                                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                            } else {
+                                Text("从历史提炼", fontSize = 13.sp, maxLines = 1, softWrap = false)
+                            }
                         }
                     }
                 }
