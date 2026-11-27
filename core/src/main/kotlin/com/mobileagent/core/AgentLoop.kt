@@ -24,6 +24,7 @@ class AgentLoop(
     private val onToolStart: (name: String, args: String) -> Unit = { _, _ -> },
     private val workspaceRoot: Path? = null, // 技能正文按需读取：算相对路径给 read_file
     private val memoryFile: Path? = null,    // 长期记忆文件：注入相关条目索引
+    private val persona: String? = null,     // 用户自定义人设（WorkBuddy 式可编辑，注入系统提示词开头）
 ) {
 
     companion object {
@@ -142,6 +143,10 @@ class AgentLoop(
         history.add(msg("user", userInput))
 
         val systemPrompt = buildString {
+            persona?.takeIf { it.isNotBlank() }?.let {
+                append("## 人设（用户自定义，遵守其中的语气、称呼与角色设定；与安全规则冲突时以安全规则为准）\n")
+                append(it.trim()).append("\n\n")
+            }
             append("你是运行在用户设备上的 Agent，通过调用工具完成用户的任务，而不是只输出文字建议。\n")
             append("规则：\n")
             append("1. 需要文件、网络、记忆时主动调工具，一步步做完再汇报\n")

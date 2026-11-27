@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -67,6 +68,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mobileagent.core.Skill
@@ -775,6 +777,64 @@ fun SkillsScreen(engine: AgentEngine) {
 
 // ---------- 设置页（原型 settings.html：接入方式 / 供应商 / 字段卡 / 参数） ----------
 
+/** 人设/记忆 编辑弹层（WorkBuddy 式：多行文本直接改，保存即生效） */
+@Composable
+private fun PersonaMemoryDialog(
+    title: String,
+    hint: String,
+    initial: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Text(
+                    hint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    BasicTextField(
+                        value = text,
+                        onValueChange = { text = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 180.dp, max = 340.dp)
+                            .padding(10.dp),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 20.sp
+                        )
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "${text.length} 字",
+                    style = MonoStyle,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.End
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(text); onDismiss() }) { Text("保存") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
+}
+
 @Composable
 fun SettingsScreen(engine: AgentEngine) {
     val cfg = engine.config
@@ -911,6 +971,39 @@ fun SettingsScreen(engine: AgentEngine) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                SectionLabel("人设与记忆")
+                var editPersona by remember { mutableStateOf(false) }
+                var editMemory by remember { mutableStateOf(false) }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = { editPersona = true }, shape = RoundedCornerShape(8.dp)) { Text("编辑人设") }
+                    OutlinedButton(onClick = { editMemory = true }, shape = RoundedCornerShape(8.dp)) { Text("编辑记忆") }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "人设是「她」的性格与称呼（每次对话都生效）；记忆是 Agent 跨会话保存的笔记，都可以直接改",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (editPersona) {
+                    PersonaMemoryDialog(
+                        title = "编辑人设",
+                        hint = "写「她」是谁、什么性格、怎么称呼你。示例：她叫小岁，温柔体贴，喜欢用「宝」称呼我，说话简短带点俏皮。",
+                        initial = engine.persona(),
+                        onDismiss = { editPersona = false },
+                        onSave = { engine.savePersona(it) }
+                    )
+                }
+                if (editMemory) {
+                    PersonaMemoryDialog(
+                        title = "编辑记忆",
+                        hint = "Agent 跨会话记住的事（生日、喜好、约定…），一行一条，可自由增删改。",
+                        initial = engine.memoryText(),
+                        onDismiss = { editMemory = false },
+                        onSave = { engine.saveMemory(it) }
+                    )
+                }
 
                 SectionLabel("后台活跃")
                 val pm = ctx.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager

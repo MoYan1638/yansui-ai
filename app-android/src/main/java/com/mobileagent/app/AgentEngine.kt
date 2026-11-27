@@ -42,6 +42,7 @@ class AgentEngine(context: Context) {
     private val skillStatePath: Path = root.resolve("data").resolve("skills-state.json")
     private val historyPath: Path = root.resolve("data").resolve("history.json")
     private val sessionsDir: Path = root.resolve("data").resolve("sessions") // 已归档的历史会话
+    private val personaPath: Path = root.resolve("data").resolve("persona.md") // 用户自定义人设
     private val memoryDir: Path = root.resolve("data").resolve("memory")
 
     private val busy = AtomicBoolean(false)
@@ -125,7 +126,8 @@ class AgentEngine(context: Context) {
                 onToolCall = { name, args, result -> onToolCall(name, args, result) },
                 onToolStart = { name, args -> onToolStart(name, args) },
                 workspaceRoot = root,                       // 技能正文按需读取
-                memoryFile = memoryDir.resolve("memory.md") // 记忆索引注入
+                memoryFile = memoryDir.resolve("memory.md"), // 记忆索引注入
+                persona = persona().takeIf { it.isNotBlank() } // 用户自定义人设注入
             )
             val reply = loop.run(input, history)
             onDone(reply, loop.lastRounds, loop.lastTokensIn, loop.lastTokensOut)
@@ -323,6 +325,31 @@ class AgentEngine(context: Context) {
                 JsonObject(skills.associate { it.name to JsonPrimitive(it.name !in disabledSkills) }).toString()
             )
         }
+    }
+
+    // ---- 人设与记忆（WorkBuddy 式：用户可直接在设置页编辑） ----
+
+    /** 当前人设文本（data/persona.md，空文件返回空串） */
+    fun persona(): String = runCatching {
+        if (!Files.exists(personaPath)) "" else personaPath.readTextCompat()
+    }.getOrDefault("")
+
+    /** 保存人设；下一条消息即生效（AgentLoop 每次任务重新构造） */
+    fun savePersona(text: String) {
+        personaPath.parent?.createDirectories()
+        personaPath.writeTextCompat(text.trim())
+    }
+
+    /** 当前长期记忆全文（data/memory/memory.md） */
+    fun memoryText(): String = runCatching {
+        val f = memoryDir.resolve("memory.md")
+        if (!Files.exists(f)) "" else f.readTextCompat()
+    }.getOrDefault("")
+
+    /** 保存长期记忆全文 */
+    fun saveMemory(text: String) {
+        memoryDir.createDirectories()
+        memoryDir.resolve("memory.md").writeTextCompat(text.trim())
     }
 
     // ---- 技能开关（技能页 Switch；关闭的技能不注入提示词） ----
