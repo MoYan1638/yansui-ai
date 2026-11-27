@@ -4,7 +4,24 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -51,7 +68,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -162,6 +183,53 @@ private fun MenuDivider() {
     )
 }
 
+// ---------- 动效 ----------
+
+/** 新条目入场：淡入 + 上滑（只用于本轮新增，恢复的历史记录不重放） */
+@Composable
+private fun Enter(animated: Boolean, content: @Composable () -> Unit) {
+    if (!animated) {
+        content()
+        return
+    }
+    val t = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        t.animateTo(1f, tween(210, easing = FastOutSlowInEasing))
+    }
+    Box(
+        modifier = Modifier.graphicsLayer {
+            alpha = t.value
+            translationY = (1f - t.value) * 28f
+        }
+    ) { content() }
+}
+
+/** 思考中：三个圆点依次呼吸 */
+@Composable
+private fun ThinkingDots() {
+    val transition = rememberInfiniteTransition(label = "thinking")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 3f,
+        animationSpec = infiniteRepeatable(tween(1300, easing = LinearEasing)),
+        label = "phase"
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        repeat(3) { i ->
+            val d = ((phase - i) % 3 + 3) % 3
+            val lit = if (d < 1f) 1f - d else 0f
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 2.5.dp)
+                    .size(6.dp)
+                    .graphicsLayer { alpha = 0.22f + 0.78f * lit }
+                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+            )
+        }
+        Spacer(Modifier.width(7.dp))
+    }
+}
+
 // ---------- 气泡（原型：AI 描边左尖角 / 用户 accent 底右尖角；长按浮出操作菜单） ----------
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -176,6 +244,7 @@ private fun Bubble(
     menu: @Composable () -> Unit = {},
 ) {
     val menuPosition = remember(isUser) { BubbleMenuPosition(alignEnd = isUser) }
+    val haptics = LocalHapticFeedback.current
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
@@ -196,7 +265,13 @@ private fun Bubble(
             ),
             modifier = Modifier
                 .widthIn(max = 320.dp)
-                .combinedClickable(onClick = { onDismissMenu() }, onLongClick = onLongPress)
+                .combinedClickable(
+                    onClick = { onDismissMenu() },
+                    onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLongPress()
+                    }
+                )
         ) {
             Column {
                 // 引用上文（追问时挂的引用）：左侧竖条 + 灰色小字，最多两行
@@ -240,12 +315,25 @@ private fun Bubble(
         }
         if (menuOpen) {
             Popup(popupPositionProvider = menuPosition, onDismissRequest = onDismissMenu) {
+                // 浮层入场：淡入 + 从气泡方向缩放弹出
+                val t = remember { Animatable(0f) }
+                LaunchedEffect(Unit) {
+                    t.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
+                }
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     shadowElevation = 12.dp,
-                    modifier = Modifier.width(210.dp)
+                    modifier = Modifier
+                        .width(210.dp)
+                        .graphicsLayer {
+                            alpha = t.value
+                            val s = 0.9f + 0.1f * t.value
+                            scaleX = s
+                            scaleY = s
+                            transformOrigin = TransformOrigin(0.5f, 0.5f)
+                        }
                 ) {
                     Column(modifier = Modifier.padding(vertical = 6.dp)) { menu() }
                 }
@@ -314,7 +402,7 @@ private fun ToolCard(item: ChatItem.Tool) {
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         modifier = Modifier.fillMaxWidth(0.92f)
     ) {
-        Column {
+        Column(modifier = Modifier.animateContentSize(tween(220, easing = FastOutSlowInEasing))) {
             // 头部：状态 + 工具名 + 参数省略 + chevron
             Row(
                 modifier = Modifier
@@ -329,6 +417,22 @@ private fun ToolCard(item: ChatItem.Tool) {
                         strokeWidth = 1.5.dp,
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    Spacer(Modifier.width(5.dp))
+                } else if (item.pending) {
+                    // 待确认：红点呼吸提醒
+                    val pulse = rememberInfiniteTransition(label = "pulse")
+                    val p by pulse.animateFloat(
+                        initialValue = 0.35f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(tween(650, easing = LinearEasing), RepeatMode.Reverse),
+                        label = "p"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .graphicsLayer { alpha = p }
+                            .background(statusColor, CircleShape)
                     )
                     Spacer(Modifier.width(5.dp))
                 } else {
@@ -396,6 +500,8 @@ fun ChatScreen(
     val items = remember { mutableStateListOf<ChatItem>() }
 
     // 从显示流恢复完整对话（含历史话题分隔；手机杀后台/退出重开后记录仍在）
+    val seenSize = remember { mutableStateOf(0) }
+    val enterAnimIdx = remember { mutableStateListOf<Int>() } // 只给本轮新增的条目播入场动画
     LaunchedEffect(engine) {
         if (items.isEmpty()) {
             engine.streamEntries().forEach { e ->
@@ -414,6 +520,7 @@ fun ChatScreen(
                 }
             }
         }
+        seenSize.value = items.size // 恢复的历史不重放入场动画
     }
 
     var input by remember { mutableStateOf("") }
@@ -463,8 +570,14 @@ fun ChatScreen(
         onDispose { engine.onChatsCleared = null }
     }
 
-    // 新条目自动滚到底部
+    // 新条目自动滚到底部；本轮新增的条目标记入场动画
     LaunchedEffect(items.size) {
+        if (items.size > seenSize.value) {
+            for (i in seenSize.value until items.size) enterAnimIdx.add(i)
+        } else if (items.size < seenSize.value) {
+            enterAnimIdx.clear() // 删除/清空后下标失效，不再播
+        }
+        seenSize.value = items.size
         if (items.isNotEmpty()) listState.animateScrollToItem(items.size - 1)
         menuIdx = -1 // 列表结构变化时收起长按菜单，避免下标错位
     }
@@ -728,45 +841,45 @@ fun ChatScreen(
                     }
                 }
                 when (m) {
-                    is ChatItem.Tool -> ToolCard(m)
-                    is ChatItem.Divider -> SessionDivider(m.label)
-                    is ChatItem.User -> Bubble(
-                        text = m.text,
-                        isUser = true,
-                        quote = m.quote,
-                        menuOpen = menuIdx == idx,
-                        onLongPress = { menuIdx = idx },
-                        onDismissMenu = { menuIdx = -1 },
-                        menu = menuBody
-                    )
-                    is ChatItem.Agent -> Bubble(
-                        text = m.text,
-                        isUser = false,
-                        menuOpen = menuIdx == idx,
-                        onLongPress = { menuIdx = idx },
-                        onDismissMenu = { menuIdx = -1 },
-                        menu = menuBody
-                    )
-                    is ChatItem.Meta -> Text(
-                        "轮次 ${m.rounds}/${m.maxRounds} · tokens ${m.tokens} · 已启用 skill: ${m.skills}",
-                        style = MonoStyle,
-                        fontSize = 10.5.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
-                    )
+                    is ChatItem.Tool -> Enter(idx in enterAnimIdx) { ToolCard(m) }
+                    is ChatItem.Divider -> Enter(idx in enterAnimIdx) { SessionDivider(m.label) }
+                    is ChatItem.User -> Enter(idx in enterAnimIdx) {
+                        Bubble(
+                            text = m.text,
+                            isUser = true,
+                            quote = m.quote,
+                            menuOpen = menuIdx == idx,
+                            onLongPress = { menuIdx = idx },
+                            onDismissMenu = { menuIdx = -1 },
+                            menu = menuBody
+                        )
+                    }
+                    is ChatItem.Agent -> Enter(idx in enterAnimIdx) {
+                        Bubble(
+                            text = m.text,
+                            isUser = false,
+                            menuOpen = menuIdx == idx,
+                            onLongPress = { menuIdx = idx },
+                            onDismissMenu = { menuIdx = -1 },
+                            menu = menuBody
+                        )
+                    }
+                    is ChatItem.Meta -> Enter(idx in enterAnimIdx) {
+                        Text(
+                            "轮次 ${m.rounds}/${m.maxRounds} · tokens ${m.tokens} · 已启用 skill: ${m.skills}",
+                            style = MonoStyle,
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
             if (running) {
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(11.dp),
-                            strokeWidth = 1.5.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-                        Spacer(Modifier.width(6.dp))
+                        ThinkingDots()
                         Text(
                             "思考中",
                             style = MonoStyle,
@@ -784,8 +897,14 @@ fun ChatScreen(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            // 追问时挂的引用：上方给两个快捷追问（学豆包：解释一下 / 详细展开）
-            if (quotedText != null) {
+            // 追问时挂的引用：上方给两个快捷追问（学豆包：解释一下 / 详细展开）；随引用条一起滑入滑出
+            var lastQuote by remember { mutableStateOf("") }
+            quotedText?.let { lastQuote = it }
+            AnimatedVisibility(
+                visible = quotedText != null,
+                enter = fadeIn(tween(150)) + expandVertically(tween(200, easing = FastOutSlowInEasing)),
+                exit = fadeOut(tween(130)) + shrinkVertically(tween(200, easing = FastOutSlowInEasing))
+            ) {
                 Row(
                     modifier = Modifier.padding(start = 2.dp, bottom = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -813,8 +932,12 @@ fun ChatScreen(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
                 Column {
-                    // 引用条：被引用的上文 + × 取消引用
-                    quotedText?.let { q ->
+                    // 引用条：被引用的上文 + × 取消引用；滑入滑出动画
+                    AnimatedVisibility(
+                        visible = quotedText != null,
+                        enter = fadeIn(tween(150)) + expandVertically(tween(200, easing = FastOutSlowInEasing)),
+                        exit = fadeOut(tween(130)) + shrinkVertically(tween(200, easing = FastOutSlowInEasing))
+                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -829,7 +952,7 @@ fun ChatScreen(
                             )
                             Spacer(Modifier.width(7.dp))
                             Text(
-                                q,
+                                lastQuote,
                                 fontSize = 11.5.sp,
                                 lineHeight = 16.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -885,13 +1008,23 @@ fun ChatScreen(
                             }
                         }
                     )
+                    // 发送键：按下时缩放反馈
+                    val sendInteraction = remember { MutableInteractionSource() }
+                    val sendPressed by sendInteraction.collectIsPressedAsState()
+                    val sendScale by animateFloatAsState(if (sendPressed) 0.88f else 1f, label = "sendScale")
                     Surface(
                         onClick = { send() },
                         enabled = !running && input.isNotBlank(),
+                        interactionSource = sendInteraction,
                         shape = RoundedCornerShape(9.dp),
                         color = if (running || input.isBlank()) MaterialTheme.colorScheme.surfaceVariant
                         else MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(4.dp)
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .graphicsLayer {
+                                scaleX = sendScale
+                                scaleY = sendScale
+                            }
                     ) {
                         Text(
                             "↑",
