@@ -26,6 +26,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.layout.Arrangement
@@ -88,6 +89,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.isRenderEffectSupported
+import com.kyant.shapes.Capsule
 import androidx.compose.ui.unit.sp
 
 /** 会话流条目：用户气泡 / Agent 气泡 / 工具执行卡片（原型三态）/ meta 行 */
@@ -549,6 +558,11 @@ fun ChatScreen(
     val clipboard = ctxRef.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val listState = rememberLazyListState()
 
+    // 液态玻璃：页面内容录进 backdrop，玻璃条实时模糊/折射它；API<31 无 RenderEffect，回退渐变玻璃
+    val darkTheme = isSystemInDarkTheme()
+    val realGlass = isRenderEffectSupported()
+    val backdrop = rememberLayerBackdrop()
+
     // 运行确认桥：工具链敏感操作 → 弹确认对话框（原型待确认卡片态）
     DisposableEffect(engine) {
         engine.onConfirmRequest = { cmd, respond ->
@@ -760,7 +774,9 @@ fun ChatScreen(
         ) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(backdrop),
             contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 150.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -916,7 +932,27 @@ fun ChatScreen(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(start = 10.dp, end = 10.dp, bottom = 8.dp)
-                .glass(shape = RoundedCornerShape(22.dp), elevation = 16.dp)
+                .then(
+                    if (realGlass) {
+                        Modifier.drawBackdrop(
+                            backdrop = backdrop,
+                            shape = { Capsule() },
+                            effects = {
+                                vibrancy()
+                                blur(14.dp.toPx())
+                                lens(18.dp.toPx(), 18.dp.toPx())
+                            },
+                            onDrawSurface = {
+                                drawRect(
+                                    if (darkTheme) Color(0xFF121418).copy(alpha = 0.30f)
+                                    else Color.White.copy(alpha = 0.40f)
+                                )
+                            }
+                        )
+                    } else {
+                        Modifier.glass(shape = RoundedCornerShape(22.dp), elevation = 16.dp)
+                    }
+                )
         ) {
             // 追问时挂的引用：上方给两个快捷追问（学豆包：解释一下 / 详细展开）；随引用条一起滑入滑出
             var lastQuote by remember { mutableStateOf("") }
