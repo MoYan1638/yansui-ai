@@ -1,7 +1,7 @@
 {
-  "version": "0.8.17",
-  "code": 53,
-  "notes": "更新包下载到应用私有目录（微信同款）：文件管理里不再留安装包。下载完成自动弹系统安装界面，无需去文件管理手动点。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.17/yansui-ai-0.8.17-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.17/yansui-ai-0.8.17-release.apk"
+  "version": "0.8.18",
+  "code": 54,
+  "notes": "API Key 加密存储：密钥进 Android Keystore 硬件安全芯片（AES-256-GCM），config/keys 文件里不再有明文 Key；旧版明文配置首次启动自动升级加密。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.18/yansui-ai-0.8.18-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.18/yansui-ai-0.8.18-release.apk"
 }

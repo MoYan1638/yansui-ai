@@ -88,13 +88,24 @@ class AgentEngine(context: Context) {
         loadSkillState()
         loadHistory() // 手机端系统随时杀后台，会话从检查点恢复（借鉴 Octop 的 restart-safe，自研 JSON 实现）
         loadStream()  // 显示流恢复（含历史话题分隔；首次升级时从 history 迁移）
-        config = ModelConfig.load(configPath)
+        config = ModelConfig.load(configPath) { ApiKeyVault.decrypt(it) ?: "" }
         loadKeys()
         // 老配置（手填时代）把 Key 归档到厂商名下，切换模型时直接可用
         config?.let {
             if (providerKeys[providerKeyOf(it.baseUrl)].isNullOrBlank()) {
                 providerKeys[providerKeyOf(it.baseUrl)] = it.apiKey
                 saveKeys()
+            }
+        }
+        // 迁移：旧版落盘的是明文 Key，这里升级为 Keystore 密文（一次写回，之后每次保存都是密文）
+        config?.let {
+            val plainStored = runCatching {
+                val obj = Json.parseToJsonElement(configPath.readTextCompat()).jsonObject
+                val k = obj["apiKey"]?.jsonPrimitive?.content ?: ""
+                k.isNotBlank() && !ApiKeyVault.isEncrypted(k)
+            }.getOrDefault(false)
+            if (plainStored) {
+                ModelConfig.save(configPath, it) { key -> ApiKeyVault.encrypt(key) ?: key }
             }
         }
     }
@@ -165,7 +176,7 @@ class AgentEngine(context: Context) {
             maxRounds = maxRounds.coerceIn(1, 40),
             compressRatio = 0.70
         )
-        ModelConfig.save(configPath, cfg)
+        ModelConfig.save(configPath, cfg) { key -> ApiKeyVault.encrypt(key) ?: key }
         config = cfg
         providerKeys[providerKeyOf(url)] = cfg.apiKey
         saveKeys()
@@ -449,7 +460,7 @@ class AgentEngine(context: Context) {
         if (!Files.exists(keysPath)) return
         runCatching {
             Json.parseToJsonElement(keysPath.readTextCompat()).jsonObject.forEach { (k, v) ->
-                providerKeys[k] = v.jsonPrimitive.content
+                providerKeys[k] = ApiKeyVault.decrypt(v.jsonPrimitive.content) ?: ""
             }
         }
     }
@@ -457,7 +468,9 @@ class AgentEngine(context: Context) {
     private fun saveKeys() {
         runCatching {
             keysPath.writeTextCompat(
-                JsonObject(providerKeys.mapValues { JsonPrimitive(it.value) }).toString()
+                JsonObject(providerKeys.mapValues { (_, v) ->
+                    JsonPrimitive(ApiKeyVault.encrypt(v) ?: v)
+                }).toString()
             )
         }
     }

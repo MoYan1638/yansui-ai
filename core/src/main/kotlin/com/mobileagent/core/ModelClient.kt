@@ -18,11 +18,15 @@ data class ModelConfig(
     val compressRatio: Double // 上下文压缩触发阈值
 ) {
     companion object {
-        fun load(path: Path): ModelConfig? = try {
+        /** apiKey 变换钩子：App 层注入 Keystore 加密/解密，core 保持纯 JVM 无 Android 依赖；默认透传（明文） */
+        fun load(
+            path: Path,
+            decryptApiKey: (String) -> String = { it }
+        ): ModelConfig? = try {
             val obj = Json.parseToJsonElement(path.readTextCompat()).jsonObject
             ModelConfig(
                 baseUrl = obj["baseUrl"]!!.jsonPrimitive.content.trimEnd('/'),
-                apiKey = obj["apiKey"]!!.jsonPrimitive.content,
+                apiKey = decryptApiKey(obj["apiKey"]!!.jsonPrimitive.content),
                 model = obj["model"]!!.jsonPrimitive.content,
                 family = (obj["family"] ?: JsonPrimitive("openai-generic")).jsonPrimitive.content,
                 maxRounds = (obj["maxRounds"] ?: JsonPrimitive(15)).jsonPrimitive.int,
@@ -32,12 +36,16 @@ data class ModelConfig(
             null
         }
 
-        /** 持久化配置（App 设置页/首启引导写回用） */
-        fun save(path: Path, c: ModelConfig) {
+        /** 持久化配置（App 设置页/首启引导写回用）；encryptApiKey 注入后 apiKey 落盘为密文 */
+        fun save(
+            path: Path,
+            c: ModelConfig,
+            encryptApiKey: (String) -> String = { it }
+        ) {
             path.parent?.createDirectories()
             path.writeTextCompat(buildJsonObject {
                 put("baseUrl", c.baseUrl)
-                put("apiKey", c.apiKey)
+                put("apiKey", encryptApiKey(c.apiKey))
                 put("model", c.model)
                 put("family", c.family)
                 put("maxRounds", c.maxRounds)
