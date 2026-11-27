@@ -562,35 +562,50 @@ fun ChatScreen(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 开新话题：归档当前对话 + 新上下文（旧记录留在对话流里）
+            // 开新话题：归档当前对话 + 新上下文（旧记录留在对话流里）；保留文字标签，别只剩一个孤零零的＋
             Surface(
                 onClick = { startNewTopic() },
                 enabled = !running,
-                shape = RoundedCornerShape(6.dp),
+                shape = RoundedCornerShape(7.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "＋",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (running) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "新会话",
+                        fontSize = 12.sp,
+                        color = if (running) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            // 历史会话（归档的旧对话，只读回看）——与左侧「新会话」同一档样式
+            Surface(
+                onClick = { showHistory = true },
+                shape = RoundedCornerShape(7.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
                 Text(
-                    "＋",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (running) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                    else MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 1.dp)
+                    "历史",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                 )
             }
-            Spacer(Modifier.weight(1f))
-            // 历史会话（归档的旧对话，只读回看）
-            Text(
-                "历史",
-                style = MonoStyle,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .clickable { showHistory = true }
-                    .padding(horizontal = 6.dp, vertical = 4.dp)
-            )
-            Spacer(Modifier.width(2.dp))
+            Spacer(Modifier.width(6.dp))
             // 模型徽章：点击弹出选模型层
             Surface(
                 onClick = { showPicker = true },
