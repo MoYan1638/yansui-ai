@@ -37,8 +37,10 @@ class BuiltinTools(
             override val usage = "path 只能是工作区内相对路径，不要拼绝对路径；读之前不确定文件是否存在可先用 list_dir 查看"
             override val parameters = """{"type":"object","properties":{"path":{"type":"string","description":"工作区内相对路径"}},"required":["path"]}"""
             override fun execute(args: JsonObject): String {
-                val p = resolveInRoot(args["path"]!!.jsonPrimitive.content)
-                if (!Files.exists(p)) throw ToolException("文件不存在：$p")
+                val rel = args["path"]!!.jsonPrimitive.content
+                val p = resolveInRoot(rel)
+                // 文件尚未创建属于正常状态（首次使用的人设/记忆），不当错误——技能约定「不存在视为空」
+                if (!Files.exists(p)) return "（文件不存在：$rel —— 视为空内容；需要时用 write_file 创建）"
                 return p.readTextCompat()
             }
         },
@@ -62,6 +64,7 @@ class BuiltinTools(
             override fun execute(args: JsonObject): String {
                 val rel = args["path"]?.jsonPrimitive?.contentOrNull ?: "."
                 val p = resolveInRoot(rel)
+                if (!Files.exists(p)) return "（目录不存在：$rel —— 视为空）"
                 if (!Files.isDirectory(p)) throw ToolException("不是目录：$p")
                 return Files.list(p).use { stream ->
                     stream.map { entry ->
