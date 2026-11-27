@@ -3,7 +3,6 @@ package com.mobileagent.app
 import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
-import android.os.Environment
 import androidx.core.content.FileProvider
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -76,7 +75,9 @@ object AppUpdater {
             .setDescription("言岁AI v${release.version} 更新包")
             .setMimeType("application/vnd.android.package-archive")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
+            // 下到应用私有目录（Android/data/包名/files/），微信同款：
+            // 文件管理里不留安装包，装完也不用清残留
+            .setDestinationInExternalFilesDir(ctx, null, name)
         val id = dm.enqueue(req)
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
             .putLong("download_id", id)

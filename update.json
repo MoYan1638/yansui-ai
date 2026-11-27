@@ -1,7 +1,7 @@
 {
-  "version": "0.8.21",
-  "code": 57,
-  "notes": "设置页 API Key 默认掩码显示（可点显示/隐藏切换）；切换供应商时自动换成该厂商已存的 Key，没存过则清空，不再把上一家的 Key 误绑到新厂商。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.21/yansui-ai-0.8.21-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.21/yansui-ai-0.8.21-release.apk"
+  "version": "0.8.17",
+  "code": 53,
+  "notes": "更新包下载到应用私有目录（微信同款）：文件管理里不再留安装包。下载完成自动弹系统安装界面，无需去文件管理手动点。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.17/yansui-ai-0.8.17-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.17/yansui-ai-0.8.17-release.apk"
 }
