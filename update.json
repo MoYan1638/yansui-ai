@@ -1,7 +1,7 @@
 {
-  "version": "0.8.10",
-  "code": 46,
-  "notes": "底部三个玻璃气泡统一宽度：输入气泡、已启用技能提示、导航栏左右边缘完全对齐，横向连成一列。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.10/yansui-ai-0.8.10-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.10/yansui-ai-0.8.10-release.apk"
+  "version": "0.8.11",
+  "code": 47,
+  "notes": "底部导航新增长按跟手交互：按住导航栏任意位置，玻璃透镜指示器实时贴着手指滑动，松手后就近停靠并切换页面，全程带触感反馈。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.11/yansui-ai-0.8.11-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.11/yansui-ai-0.8.11-release.apk"
 }
