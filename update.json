@@ -1,7 +1,7 @@
 {
-  "version": "0.8.14",
-  "code": 50,
-  "notes": "页面改为真实横滑（HorizontalPager）：拖导航时整页实时跟着手指走，松手就近停靠；反过来在页面上左右滑也能带动导航透镜跟手。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.14/yansui-ai-0.8.14-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.14/yansui-ai-0.8.14-release.apk"
+  "version": "0.8.15",
+  "code": 51,
+  "notes": "修复下载完成后一直显示“下载中”不弹安装：完成广播改为 EXPORTED 才能收到系统下载器的通知；轮询同时检查任务状态，广播丢失也能在半秒内发现下完并自动拉起安装器。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.15/yansui-ai-0.8.15-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.15/yansui-ai-0.8.15-release.apk"
 }

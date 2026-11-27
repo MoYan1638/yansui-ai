@@ -1251,9 +1251,11 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
         }
     }
     DisposableEffect(ctx) {
+        // DownloadManager 的完成广播来自系统下载器进程，NOT_EXPORTED 会把它挡在外面——
+        // 必须 EXPORTED 才收得到（广播里带 download id，收到后再查 DownloadManager 状态校验，不会被伪造）
         androidx.core.content.ContextCompat.registerReceiver(
             ctx, appDlReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+            androidx.core.content.ContextCompat.RECEIVER_EXPORTED
         )
         onDispose { runCatching { ctx.unregisterReceiver(appDlReceiver) } }
     }
@@ -1269,14 +1271,33 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     appApkFile = r.second
                     appUpdState = "ready"
                     showAppUpd = true
+                    AppUpdater.install(ctx, r.second)
                 }
             }.start()
         }
     }
 
-    // 下载中轮询进度
+    // 下载中轮询：进度 + 任务状态。不依赖广播——广播丢了也能在 0.5s 内发现下完并拉起安装器
     LaunchedEffect(appUpdState, appDlId) {
         while (appUpdState == "downloading" && appDlId > 0) {
+            val status = AppUpdater.status(ctx, appDlId)
+            if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                val f = AppUpdater.prepareInstall(ctx, appDlId)
+                if (f != null) {
+                    appApkFile = f
+                    appUpdState = "ready"
+                    showAppUpd = true
+                    AppUpdater.install(ctx, f)
+                } else {
+                    appUpdMsg = "更新包校验失败，请重试"
+                    appUpdState = "error"
+                }
+                break
+            } else if (status == DownloadManager.STATUS_FAILED) {
+                appUpdMsg = "下载失败，请重试或换网络"
+                appUpdState = "error"
+                break
+            }
             appDlProgress = AppUpdater.progress(ctx, appDlId)
             delay(500)
         }

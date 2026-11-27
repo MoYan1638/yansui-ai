@@ -96,6 +96,13 @@ object AppUpdater {
         } else -1
     }.getOrDefault(-1)
 
+    /** 任务状态：SUCCESSFUL / FAILED / RUNNING / PAUSED / PENDING；任务不存在返回 -1 */
+    fun status(ctx: Context, id: Long): Int = runCatching {
+        val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val q = dm.query(DownloadManager.Query().setFilterById(id))
+        if (q.moveToFirst()) q.getInt(q.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) else -1
+    }.getOrDefault(-1)
+
     /** 下载完成后校验并拷进 cache，返回待安装文件；失败返回 null */
     fun prepareInstall(ctx: Context, id: Long): File? = runCatching {
         val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
