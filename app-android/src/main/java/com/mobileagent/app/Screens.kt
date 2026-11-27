@@ -19,6 +19,11 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -59,14 +64,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -102,6 +110,8 @@ import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.Capsule
 import com.mobileagent.core.Skill
+import java.io.File
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -1140,6 +1150,70 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     var skillUpdState by remember { mutableStateOf("idle") } // idle/checking/available/applying/done/latest/error
     var skillUpdMsg by remember { mutableStateOf(SkillUpdater.localVersion(engine.skillUpdateDir)) }
 
+    // 应用内检查更新（APK 本体走系统下载器，装包从 GitHub Releases 拉取，双源自动切换镜像）
+    var appUpdState by remember { mutableStateOf("idle") } // idle/checking/latest/available/downloading/ready/error
+    var appUpdMsg by remember { mutableStateOf("") }
+    var appRelease by remember { mutableStateOf<AppUpdater.Release?>(null) }
+    var appApkFile by remember { mutableStateOf<File?>(null) }
+    var showAppUpd by remember { mutableStateOf(false) }
+    var appDlId by remember { mutableLongStateOf(-1L) }
+    var appDlProgress by remember { mutableIntStateOf(0) }
+    val currentVer = remember { AppUpdater.currentVersion(ctx) }
+
+    fun checkAppUpdate() {
+        if (appUpdState == "checking" || appUpdState == "downloading") return
+        appUpdState = "checking"
+        Thread {
+            val rel = runCatching { AppUpdater.fetch() }.getOrNull()
+            when {
+                rel == null -> {
+                    appUpdMsg = "更新源不可达（GitHub 与镜像均失败）"
+                    appUpdState = "error"
+                }
+                AppUpdater.isNewer(rel.version, currentVer) -> {
+                    appRelease = rel
+                    appUpdState = "available"
+                    showAppUpd = true
+                }
+                else -> appUpdState = "latest"
+            }
+        }.start()
+    }
+
+    // 下载完成广播：校验产物并拷进 cache 待安装
+    val appDlReceiver = remember {
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) ?: return
+                if (id != appDlId) return
+                val f = AppUpdater.prepareInstall(ctx, id)
+                if (f != null) {
+                    appApkFile = f
+                    appUpdState = "ready"
+                    showAppUpd = true
+                } else {
+                    appUpdMsg = "下载失败或已取消"
+                    appUpdState = "error"
+                }
+            }
+        }
+    }
+    DisposableEffect(ctx) {
+        androidx.core.content.ContextCompat.registerReceiver(
+            ctx, appDlReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        onDispose { runCatching { ctx.unregisterReceiver(appDlReceiver) } }
+    }
+
+    // 下载中轮询进度
+    LaunchedEffect(appUpdState, appDlId) {
+        while (appUpdState == "downloading" && appDlId > 0) {
+            appDlProgress = AppUpdater.progress(ctx, appDlId)
+            delay(500)
+        }
+    }
+
     // 主动任务
     var tasks by remember { mutableStateOf(CronStore.all(ctx)) }
     var showAddTask by remember { mutableStateOf(false) }
@@ -1599,6 +1673,52 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                SectionLabel("应用更新")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        when (appUpdState) {
+                            "checking" -> "○ 正在检查更新…"
+                            "latest" -> "● 已是最新版本（v$currentVer）"
+                            "available" -> "● 发现新版本 v${appRelease?.version}"
+                            "downloading" -> "○ 下载中 $appDlProgress%"
+                            "ready" -> "● 更新包就绪，待安装"
+                            "error" -> "× $appUpdMsg"
+                            else -> "● 当前版本 v$currentVer"
+                        },
+                        style = MonoStyle,
+                        fontSize = 11.sp,
+                        color = when {
+                            appUpdState in listOf("latest", "available", "ready") -> MaterialTheme.colorScheme.primary
+                            appUpdState == "error" -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    if (appUpdState in listOf("idle", "latest", "error")) {
+                        OutlinedButton(onClick = { checkAppUpdate() }, shape = RoundedCornerShape(8.dp)) {
+                            Text("检查更新")
+                        }
+                    }
+                    if (appUpdState == "available") {
+                        OutlinedButton(onClick = { showAppUpd = true }, shape = RoundedCornerShape(8.dp)) {
+                            Text("查看详情")
+                        }
+                    }
+                    if (appUpdState == "ready") {
+                        OutlinedButton(
+                            onClick = { appApkFile?.let { AppUpdater.install(ctx, it) } },
+                            shape = RoundedCornerShape(8.dp)
+                        ) { Text("立即安装") }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "更新源为 GitHub Releases（不通时自动切换镜像）。下载由系统下载器接管，完成后在本页或弹窗点「立即安装」；首次安装需在系统设置里允许本应用「安装未知应用」。",
+                    style = MaterialTheme.typography.bodySmall,
+                    lineHeight = 19.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 SectionLabel("主动任务（定时）")
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -1745,5 +1865,64 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     // API 开通教程（与引导页「先建一个」共用同一份指引）
     if (showGuide) {
         ApiGuideDialog(onDismiss = { showGuide = false })
+    }
+
+    // 应用更新弹窗：版本说明 + 下载进度 + 安装入口
+    if (showAppUpd && appUpdState in listOf("available", "downloading", "ready")) {
+        appRelease?.let { rel ->
+            AlertDialog(
+                onDismissRequest = { if (appUpdState != "downloading") showAppUpd = false },
+                title = { Text("发现新版本 v${rel.version}") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "当前版本 v$currentVer",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (rel.notes.isNotBlank()) {
+                            Text(
+                                rel.notes,
+                                style = MaterialTheme.typography.bodySmall,
+                                lineHeight = 19.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        if (appUpdState == "downloading") {
+                            LinearProgressIndicator(progress = { appDlProgress / 100f })
+                            Text(
+                                "已下载 $appDlProgress%",
+                                style = MonoStyle,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    when (appUpdState) {
+                        "available" -> TextButton(onClick = {
+                            appDlId = AppUpdater.enqueueDownload(ctx, rel)
+                            appDlProgress = 0
+                            appUpdState = "downloading"
+                        }) { Text("下载更新") }
+                        "downloading" -> TextButton(onClick = {}, enabled = false) { Text("下载中…") }
+                        "ready" -> TextButton(onClick = {
+                            appApkFile?.let { AppUpdater.install(ctx, it) }
+                        }) { Text("立即安装") }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        if (appUpdState == "downloading") {
+                            runCatching {
+                                (ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).remove(appDlId)
+                            }
+                            appUpdState = "available"
+                        } else showAppUpd = false
+                    }) { Text(if (appUpdState == "downloading") "取消下载" else "以后再说") }
+                }
+            )
+        }
     }
 }

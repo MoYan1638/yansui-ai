@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider 授权范围：仅应用 cache 根目录（更新包 update.apk 存放处） -->
+<paths>
+    <cache-path name="cache" path="." />
+</paths>
