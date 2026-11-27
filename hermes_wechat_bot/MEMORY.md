@@ -1,5 +1,10 @@
 # 言岁AI · 经验教训备忘
 
+## 2026-11-27 技能热更新：源内容会变，下载必须校验
+- 事故：用户检查更新把 love-companion 拉成了上游原版——当时远端 skills/love-companion 短暂停的是原版（另一条工作线推的 update 提交）
+- 加固（SkillUpdater.kt）：①raw/mirror 请求带 `?t=<ms>` 破 CDN/镜像缓存；②SKILL.md 下载后校验头部含「移动端适配版」，否则中止且不动本地
+- 规则：版本比对用 `!=` 而非大小比较，降级回移动版也能触发重装；远端同路径内容可能被多次覆盖，消费端必须做内容指纹校验
+
 ## 2026-11-27 网络：git push 被代理挡时用 GitHub API 兜底
 - 现象：`git push` 持续 502/schannel 断连，但 `gh`（走 api.github.com）能通
 - 兜底链路：

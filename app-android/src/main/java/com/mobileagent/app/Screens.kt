@@ -170,7 +170,10 @@ private fun Field(
     onChange: (String) -> Unit,
     singleLine: Boolean = false,
     hint: String? = null,
+    masked: Boolean = false,
 ) {
+    // 掩码显示（可切换）：回显明文密钥易被截图/旁人窥视，默认打码
+    var reveal by remember { mutableStateOf(false) }
     Column {
         Text(
             label,
@@ -183,6 +186,14 @@ private fun Field(
             value = value,
             onValueChange = onChange,
             singleLine = singleLine,
+            visualTransformation = if (masked && !reveal) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+            trailingIcon = if (masked) {
+                {
+                    TextButton(onClick = { reveal = !reveal }) {
+                        Text(if (reveal) "隐藏" else "显示", fontSize = 11.sp)
+                    }
+                }
+            } else null,
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(8.dp),
             colors = OutlinedTextFieldDefaults.colors(
@@ -1356,6 +1367,9 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                             modifier = Modifier.clickable {
                                 if (pair.first.isNotBlank()) {
                                     baseUrl = pair.first; model = pair.second; savedTip = false
+                                    // 切供应商换 Key：取该厂商已存的，没存过就清空，
+                                    // 避免上一家的 Key 被误存到这一家名下
+                                    apiKey = engine.keyFor(providerKeyOf(pair.first)) ?: ""
                                 }
                             }
                         ) {
@@ -1383,8 +1397,8 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                         Field("MODEL", model, { model = it; savedTip = false }, singleLine = true,
                             hint = "按模型家族自动匹配提示词模板（deepseek / minimax / openai）")
                         Spacer(Modifier.height(10.dp))
-                        Field("API KEY", apiKey, { apiKey = it; savedTip = false }, singleLine = true,
-                            hint = "存储于应用私有目录，不明文上传")
+                        Field("API KEY", apiKey, { apiKey = it; savedTip = false }, singleLine = true, masked = true,
+                            hint = "已加密存储于应用私有目录（Keystore 硬件加密），不上传")
                     }
                 }
 

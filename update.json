@@ -1,7 +1,7 @@
 {
-  "version": "0.8.20",
-  "code": 56,
-  "notes": "修复技能检查更新曾拉到上游原版的问题：更新请求加缓存穿透参数；下载内容校验必须是移动端适配版，异常自动中止。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.20/yansui-ai-0.8.20-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.20/yansui-ai-0.8.20-release.apk"
+  "version": "0.8.21",
+  "code": 57,
+  "notes": "设置页 API Key 默认掩码显示（可点显示/隐藏切换）；切换供应商时自动换成该厂商已存的 Key，没存过则清空，不再把上一家的 Key 误绑到新厂商。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.21/yansui-ai-0.8.21-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.21/yansui-ai-0.8.21-release.apk"
 }
