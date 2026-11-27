@@ -469,6 +469,26 @@ class AgentEngine(context: Context) {
         }
     }
 
+    /** 清空全部对话记录：当前上下文 + 显示流 + 归档会话（人设/记忆/配置/技能都不动）；执行中返回 false */
+    fun clearAllChats(): Boolean {
+        if (busy.get()) return false
+        history.clear()
+        stream.clear()
+        runCatching { Files.deleteIfExists(historyPath) }
+        runCatching { Files.deleteIfExists(streamPath) }
+        runCatching {
+            if (Files.exists(sessionsDir)) {
+                val files = Files.list(sessionsDir).use { s -> s.toList() }
+                files.forEach { Files.deleteIfExists(it) }
+            }
+        }
+        onChatsCleared?.invoke()
+        return true
+    }
+
+    /** 对话被清空时通知界面（ChatScreen 注册，清掉内存气泡） */
+    var onChatsCleared: (() -> Unit)? = null
+
     // ---- 技能开关（技能页 Switch；关闭的技能不注入提示词） ----
 
     fun isSkillEnabled(name: String): Boolean = name !in disabledSkills

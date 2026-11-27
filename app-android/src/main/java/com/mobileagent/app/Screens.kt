@@ -963,9 +963,39 @@ fun SettingsScreen(engine: AgentEngine) {
                 }
 
                 SectionLabel("会话")
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = { engine.startNewSession() }, shape = RoundedCornerShape(8.dp)) { Text("新会话") }
-                    OutlinedButton(onClick = { engine.clearMemory() }, shape = RoundedCornerShape(8.dp)) { Text("清空长期记忆") }
+                var confirmClearChats by remember { mutableStateOf(false) }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(onClick = { engine.startNewSession() }, shape = RoundedCornerShape(8.dp)) { Text("新会话") }
+                        OutlinedButton(onClick = { confirmClearChats = true }, shape = RoundedCornerShape(8.dp)) {
+                            Text("清空对话", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    OutlinedButton(onClick = { engine.clearMemory() }, shape = RoundedCornerShape(8.dp)) {
+                        Text("清空长期记忆")
+                    }
+                }
+                if (confirmClearChats) {
+                    AlertDialog(
+                        onDismissRequest = { confirmClearChats = false },
+                        title = { Text("清空全部对话？") },
+                        text = {
+                            Text(
+                                "当前对话、历史归档会全部删除，无法恢复。\n\n人设、长期记忆、模型配置和技能不受影响。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                engine.clearAllChats()
+                                confirmClearChats = false
+                            }) { Text("确认清空", color = MaterialTheme.colorScheme.error) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmClearChats = false }) { Text("取消") }
+                        }
+                    )
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(

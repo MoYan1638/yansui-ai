@@ -273,7 +273,16 @@ fun ChatScreen(
             }
             pendingConfirm = cmd to respond
         }
-        onDispose { engine.onConfirmRequest = null }
+        onDispose {
+            engine.onConfirmRequest = null
+            engine.onChatsCleared = null
+        }
+    }
+
+    // 设置页「清空对话」后，同步清掉内存气泡流
+    DisposableEffect(engine) {
+        engine.onChatsCleared = { items.clear() }
+        onDispose { engine.onChatsCleared = null }
     }
 
     // 新条目自动滚到底部
