@@ -87,3 +87,10 @@
 - 文件写入非原子：writeTextCompat 原直接 Files.write 覆盖，写一半被杀 → 半截 JSON，下次启动解析失败 → 会话/密钥/配置全丢。改为写唯一后缀 .tmp 再 ATOMIC_MOVE 覆盖（不支持则普通 move），一处改 core/NioCompat 全仓库受益
 - BroadcastReceiver.goAsync() 只有约 10 秒窗口，定时任务 result.get(6, MINUTES) 基本必被腰斩。改为前台服务 AgentTaskService（startForegroundService + 常驻通知），Manifest 加 FOREGROUND_SERVICE / FOREGROUND_SERVICE_DATA_SYNC 权限 + foregroundServiceType="dataSync"（Android 14+ 必须声明类型）；Receiver 只拉起服务
 - 移动端长任务（>10s）一律前台服务，不要 goAsync/普通线程
+
+## 2026-11-28 应用内浏览器替代跳系统浏览器（v0.8.34）
+- 需求：API Key 官网教程点「打开官网」老跳系统浏览器，用户嫌麻烦要应用内打开
+- 方案：不用 Chrome Custom Tabs——国内机型常无支持浏览器会 fallback 回外部，达不到"不跳出"。用独立 Activity + WebView 真正内置
+- BrowserActivity.kt：顶栏(返回/标题/浏览器兜底) + 进度条 + WebView；JS/DOM storage 开(平台控制台登录需要)、禁 file 访问；shouldOverrideUrlLoading 里 http(s) 留应用内、tel/mailto 交系统、其他协议拦掉；返回键 goBack 能退则退否则 finish；Android 15 强制 edge-to-edge 顶栏加 statusBar inset
+- 注册 Manifest：BrowserActivity exported=false；openUrl 改成 BrowserActivity.start，失败兜底外部 ACTION_VIEW
+- 发包前 lintRelease 务必跑（已固化为规矩）；SSH push 用 ssh://git@ssh.github.com:443 显式 URL 推完后，本地 origin/main 跟踪引用不会自动更新会显示 ahead N（假象），git fetch 该 SSH URL 后 git update-ref refs/remotes/origin/main FETCH_HEAD 修正
