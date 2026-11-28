@@ -1228,6 +1228,18 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     // Shizuku（可选能力，只建议不强制）
     var shizukuTick by remember { mutableIntStateOf(0) }
 
+    // 从系统设置页（电池白名单/通知/Shizuku 授权）返回时页面不会重组，但这些状态是读系统值的。
+    // 监听 ON_RESUME 强制 +1，让下面几个状态重新计算，做到「设置完一返回就刷新」。
+    var resumeTick by remember { mutableIntStateOf(0) }
+    DisposableEffect(ctx) {
+        val owner = ctx as? androidx.lifecycle.LifecycleOwner
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) resumeTick++
+        }
+        owner?.lifecycle?.addObserver(observer)
+        onDispose { owner?.lifecycle?.removeObserver(observer) }
+    }
+
     // 技能热更新（只跟踪 love-companion）
     var skillUpdState by remember { mutableStateOf("idle") } // idle/checking/available/applying/done/latest/error
     var skillUpdMsg by remember { mutableStateOf(SkillUpdater.localVersion(engine.skillUpdateDir)) }
@@ -1361,10 +1373,13 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     var tasks by remember { mutableStateOf(CronStore.all(ctx)) }
     var showAddTask by remember { mutableStateOf(false) }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    val notifGranted = if (android.os.Build.VERSION.SDK_INT >= 33) {
-        ctx.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-    } else true
+    // resumeTick 变化时重读权限状态（从系统设置返回自动刷新）
+    val notifGranted = remember(resumeTick) {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            ctx.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else true
+    }
 
     // 供应商片：从内置预设生成，末尾留自定义；点片即切换 URL/模型并带出该厂商已存的 Key
     val providers = remember {
@@ -1699,7 +1714,8 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                 SectionLabel("后台活跃")
                 SettingsCard {
                 val pm = ctx.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
-                val whitelisted = pm.isIgnoringBatteryOptimizations(ctx.packageName)
+                // 依赖 resumeTick：从系统电池设置页返回即刷新
+                val whitelisted = remember(resumeTick) { pm.isIgnoringBatteryOptimizations(ctx.packageName) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         if (whitelisted) "● 已在电池优化白名单" else "○ 未加入电池优化白名单",
@@ -1735,7 +1751,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
 
                 SectionLabel("命令行通道 · Shizuku（可选）")
                 SettingsCard {
-                val shizukuState = remember(shizukuTick) {
+                val shizukuState = remember(shizukuTick, resumeTick) {
                     when {
                         ShizukuGate.granted() -> "ready"
                         ShizukuGate.ping() -> "ping"

@@ -42,3 +42,9 @@
   - 首次需接受 host key（`StrictHostKeyChecking=accept-new`）
   - 本机 SSH 密钥读取会触发权限弹窗，需用户允许；被拒时当轮不要再重试
 - 顺序：优先直推；不通先试 SSH 443；仍不行再用 gh release + Contents API 兜底
+
+## 2026-11-28 更新下载"一直失败"根因 & 镜像选型（v0.8.29）
+- 根因：AppUpdater.enqueueDownload 只用 release.urls.first()（GitHub 直连），国内手机直连 github release 必超时；镜像地址解析出来了却从没被使用，失败重试还是同一死地址 → "一直失败"
+- 修复：①enqueueDownload 加 idx 参数；②新增 nextSource()；③Screens 加 appDlSrcIdx + onDownloadFailed(id,reason)，失败自动切下一源重下（用 id 比对防止广播与轮询双触发，切源前 remove 旧任务避免同名文件占用）；④下载按钮重置 idx=0
+- 镜像实测（无代理模拟手机）：github 直连超时 0B；ghproxy.net 30s 仅 3.9MB（不稳，弃用）；gh-proxy.com 完整 8.7MB 可用 → 定为 apk 主源，github 直连降为备用
+- 规则：update.json 里 apk 字段放国内可达镜像、apk_mirror 放 github 直连；UPDATE_MIRROR 也从 ghproxy.net 改 gh-proxy.com

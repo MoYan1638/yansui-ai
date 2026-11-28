@@ -108,9 +108,10 @@ object ModelPresets {
             desc = "多模态与语音见长", window = "200K"
         ),
         ModelPreset(
-            provider = "siliconflow", name = "硅基流动 · DeepSeek",
+            provider = "siliconflow", name = "硅基流动",
             baseUrl = "https://api.siliconflow.cn/v1", model = "deepseek-ai/DeepSeek-V3",
-            desc = "一个 Key 聚合多款开源模型", window = "64K"
+            desc = "聚合平台，一个 Key 调用上百款模型；模型名可在设置页自由改", window = "64K",
+            badges = listOf("聚合")
         ),
     )
 
