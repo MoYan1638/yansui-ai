@@ -1435,6 +1435,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     keyProviders.forEach { (prov, provUrl) ->
                         var k by remember(prov) { mutableStateOf(engine.keyFor(prov) ?: "") }
                         var savedK by remember(prov) { mutableStateOf(engine.keyFor(prov) ?: "") }
+                        var reveal by remember(prov) { mutableStateOf(false) }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 prov,
@@ -1447,8 +1448,14 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                                 value = k,
                                 onValueChange = { k = it },
                                 singleLine = true,
-                                visualTransformation = PasswordVisualTransformation(),
+                                visualTransformation = if (reveal) androidx.compose.ui.text.input.VisualTransformation.None
+                                    else PasswordVisualTransformation(),
                                 placeholder = { Text("未保存", fontSize = 10.sp) },
+                                trailingIcon = {
+                                    TextButton(onClick = { reveal = !reveal }) {
+                                        Text(if (reveal) "隐藏" else "显示", fontSize = 10.sp)
+                                    }
+                                },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(8.dp)
                             )

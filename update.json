@@ -1,7 +1,7 @@
 {
-  "version": "0.8.25",
-  "code": 61,
-  "notes": "供应商片补齐与 API Keys 区块一致：新增 kimi、通义千问、minimax、硅基流动，两边同一数据源生成永不脱节；片过多自动换行。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.25/yansui-ai-0.8.25-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.25/yansui-ai-0.8.25-release.apk"
+  "version": "0.8.23",
+  "code": 59,
+  "notes": "API Keys 管理区块每行增加显示/隐藏切换：默认掩码，点一下可临时看明文核对，与密码框交互一致。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.23/yansui-ai-0.8.23-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.23/yansui-ai-0.8.23-release.apk"
 }

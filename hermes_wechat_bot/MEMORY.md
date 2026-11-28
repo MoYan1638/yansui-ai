@@ -15,7 +15,7 @@
 - 兜底链路：
   - 发 release：`gh release create vX.Y.Z apk文件` 不受 git push 影响
   - 改单文件（如 update.json）：`gh api -X PUT repos/OWNER/REPO/contents/FILE -f content=<base64> -f sha=<旧sha>` 直接提交（先 `gh api .../contents/FILE --jq .sha` 取旧 sha）
-  - 注意：API 提交会让本地落后远端一笔，之后 git push 会报 non-fast-forward，需先 pull --rebase
+  - 注意：API 提交会让本地落后远端一笔，之后 git push 会报 non-fast-forward，需先 pull --rebase；rebase 冲突通常只有 update.json（代码远端已有），`git checkout --theirs update.json && git add && git rebase --continue` 即可
   - git blobs/tree API 重建整个提交的方案在 Windows 命令行会超长且触发安全策略拦截，不要走
 
 ## 2026-11-27 液态玻璃导航：指示器盖住的内容必须在采样层里都有
