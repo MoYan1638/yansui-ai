@@ -105,3 +105,9 @@
 - 用户反馈装好后打开 App 仍弹安装。0.8.35 只清了「当前记录的那一个任务」，但 0.8.30~0.8.34 每次成功下载都留一条 DownloadManager 完成通知 + 任务，通知栏积了好几条，点任何一条都会打开对应 apk 重弹安装器；且清理逻辑只在进设置页触发，主界面根本跑不到
 - 根治：MainActivity.onCreate 即调 AppUpdater.clearFinishedTasks(ctx, currentVer)——query 本应用全部下载任务（DownloadManager.query 天然只返回本 uid 的任务），从 COLUMN_TITLE 解析版本号（yansui-ai-x.y.z-release.apk），<= 当前版本或 FAILED 的 dm.remove（删任务+通知+安装包），> 当前版本的保留给 resumeDownload 弹安装
 - 规则：**DownloadManager 任务完成通知的生命周期 = 任务本身**，remove 是唯一清理方式；凡是往通知栏发持久通知的组件（DownloadManager 等），清理必须放在「应用启动」而非「某个页面进入时」
+
+## 2026-11-28 供应商「自定义…」片点击无反应（v0.8.37）
+- 现象：设置页供应商片里点「自定义…」完全没反应
+- 根因：providers 列表里自定义项的值是 ("" to "")，点击处理写成 `if (pair.first.isNotBlank())` 才切换，空地址被跳过；选中态 `sel = pair.first == baseUrl` 也让自定义地址永远不高亮
+- 修复：区分 isCustom(pair.first.isBlank())，自定义点击→清空 baseUrl/model/apiKey 供手填，其余照旧切换；sel 用 usingBuiltIn 反推，地址不在内置厂商里就高亮自定义片
+- 规则：列表里用「空值」当特殊项标识时，凡是 if(isNotBlank) 之类的守卫都会误杀它，特殊项必须单独分支处理
