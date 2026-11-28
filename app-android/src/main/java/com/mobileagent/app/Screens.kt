@@ -1201,7 +1201,10 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var baseUrl by remember(cfg) { mutableStateOf(cfg?.baseUrl ?: "https://api.deepseek.com/v1") }
     var model by remember(cfg) { mutableStateOf(cfg?.model ?: "deepseek-chat") }
-    // Key 不在本卡片编辑：统一在下方「API Keys · 各厂商独立保存」区块按厂商管理
+    // Key 回到卡片里编辑：按当前供应商读写，底层仍按厂商独立加密保存
+    var apiKey by remember(cfg) {
+        mutableStateOf(engine.keyFor(providerKeyOf(baseUrl)) ?: cfg?.apiKey?.takeIf { it.isNotBlank() } ?: "")
+    }
     var savedTip by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showGuide by remember { mutableStateOf(false) }
@@ -1326,7 +1329,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
             android.content.pm.PackageManager.PERMISSION_GRANTED
     } else true
 
-    // 供应商片与下方 API Keys 区块同源：都从内置预设生成，永远一致；openai 不在预设里单独补上，末尾留自定义
+    // 供应商片：从内置预设生成，末尾留自定义；点片即切换 URL/模型并带出该厂商已存的 Key
     val providers = remember {
         val disp = mapOf(
             "deepseek" to "deepseek", "moonshot" to "kimi", "zhipu" to "智谱",
@@ -1377,7 +1380,9 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                             ),
                             modifier = Modifier.clickable {
                                 if (pair.first.isNotBlank()) {
-                                    baseUrl = pair.first; model = pair.second; savedTip = false
+                                    baseUrl = pair.first; model = pair.second
+                                    apiKey = engine.keyFor(providerKeyOf(pair.first)) ?: ""
+                                    savedTip = false
                                     error = null
                                 }
                             }
@@ -1403,8 +1408,11 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     Column(Modifier.padding(14.dp)) {
                         Field("BASE URL", baseUrl, { baseUrl = it; savedTip = false }, singleLine = true)
                         Spacer(Modifier.height(10.dp))
-                        Field("MODEL", model, { model = it; savedTip = false }, singleLine = true,
-                            hint = "Key 在下方 API Keys 区块按厂商保存；自定义厂商会自动出现在区块末尾")
+                        Field("MODEL", model, { model = it; savedTip = false }, singleLine = true)
+                        Spacer(Modifier.height(10.dp))
+                        Field("API KEY", apiKey, { apiKey = it; savedTip = false }, singleLine = true,
+                            masked = true,
+                            hint = "Key 按厂商独立加密保存，切换供应商自动带出对应 Key")
                     }
                 }
 
@@ -1416,12 +1424,13 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Button(
                         onClick = {
-                            val key = engine.keyFor(providerKeyOf(baseUrl))
+                            val key = apiKey.trim()
                             when {
                                 baseUrl.isBlank() || model.isBlank() -> error = "接口地址和模型名都要填"
-                                key.isNullOrBlank() ->
-                                    error = "该厂商还没有 Key，先在下方 API Keys 区块保存后再连接"
+                                key.isBlank() -> error = "请填写 API Key"
                                 else -> {
+                                    // Key 按当前厂商存一份再落配置，切供应商回来时自动带出
+                                    engine.setProviderKey(providerKeyOf(baseUrl), key)
                                     engine.saveConfig(baseUrl, key, model)
                                     savedTip = true; error = null
                                 }
@@ -1435,60 +1444,6 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     }
                 }
 
-                SectionLabel("API Keys · 各厂商独立保存")
-                // 每家厂商一行，各自掩码保存；上方供应商/模型切换时自动取对应厂商的 Key。
-                // 自定义厂商（baseUrl 不在预设里）动态追加一行，保证任何接口都能存 Key
-                val keyProviders = remember(baseUrl) {
-                    val base = ModelPresets.all.distinctBy { it.provider }.map { it.provider to it.baseUrl }
-                    val cur = providerKeyOf(baseUrl)
-                    if (base.any { it.first == cur }) base else base + (cur to baseUrl)
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    keyProviders.forEach { (prov, provUrl) ->
-                        var k by remember(prov) { mutableStateOf(engine.keyFor(prov) ?: "") }
-                        var savedK by remember(prov) { mutableStateOf(engine.keyFor(prov) ?: "") }
-                        var reveal by remember(prov) { mutableStateOf(false) }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                prov,
-                                style = MonoStyle,
-                                fontSize = 10.5.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.width(72.dp)
-                            )
-                            OutlinedTextField(
-                                value = k,
-                                onValueChange = { k = it },
-                                singleLine = true,
-                                visualTransformation = if (reveal) androidx.compose.ui.text.input.VisualTransformation.None
-                                    else PasswordVisualTransformation(),
-                                placeholder = { Text("未保存", fontSize = 10.sp) },
-                                trailingIcon = {
-                                    TextButton(onClick = { reveal = !reveal }) {
-                                        Text(if (reveal) "隐藏" else "显示", fontSize = 10.sp)
-                                    }
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            TextButton(
-                                onClick = {
-                                    engine.setProviderKey(prov, k)
-                                    savedK = k.trim()
-                                },
-                                enabled = k.isNotBlank() && k.trim() != savedK
-                            ) { Text("保存", fontSize = 11.sp) }
-                        }
-                        Text(
-                            provUrl,
-                            style = MonoStyle,
-                            fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 72.dp)
-                        )
-                    }
-                }
                 Spacer(Modifier.height(6.dp))
 
                 SectionLabel("会话")
