@@ -9,7 +9,16 @@
   - 读系统/外部状态的 UI（电池白名单/权限/Shizuku）：挂 lifecycle ON_RESUME tick，从系统页返回要自动刷新
   - 网络：国内直连 GitHub 必失败，更新/技能下载走可用镜像 + 主源失败自动切备用
   - 后台定时：AlarmManager setAndAllowWhileIdle + 前台服务，重启后重排
+  - 前台服务 Android 12+/14+ 启动限制：后台启动 FGS 会抛 ForegroundServiceStartNotAllowedException；豁免只有「精确闹钟 setExact」「电池白名单」「用户可见转换」等。setAndAllowWhileIdle 不算豁免！判断白名单走 FGS，否则 try-catch + goAsync 降级，绝不裸调
+  - Manifest 声明 foregroundServiceType 后，API 34+ 的 startForeground 必须用带 type 的签名（ServiceCompat.startForeground(..., FOREGROUND_SERVICE_TYPE_DATA_SYNC)），否则 MissingForegroundServiceTypeException
+  - JVM Stream.toList() 是 API 34/Java16+，minSdk 26 上老机型直接 NoSuchMethodError → 一律用 .collect(Collectors.toList())
+  - Compose 里 mutableStateOf 声明必须 remember，否则重组丢状态
 - 用户反复强调过这条，说明之前的审查还不够自觉——以后动手前先按此清单过一遍再写代码
+
+## 2026-11-28 发布前 lint 体检（v0.8.33）
+- `./gradlew :app-android:lintRelease` 必跑：抓到 3 个 Error 全是"桌面写法搬手机"——两处 Stream.toList()（历史列表/清空对话在 Android 8-13 崩溃）、一处 mutableStateOf 未 remember（引导页重组丢状态）
+- 教训：assembleRelease 不跑 lint（只跑 lintVital），真正的 API 级别/Compose 检查要显式 lintRelease；用户要求"别等发布全是 bug"，以后每版发包前都跑一次
+- warning 里多是依赖版本/图标/代码风格，可忽略；Error 才是崩溃级，必须清零
 
 ## 2026-11-27 设置页 Key 管理两坑（v0.8.21）
 - 密钥字段回显必须掩码：存储加密≠显示安全，截图/旁观即泄露；Field 加 masked 参数 + 显示/隐藏切换（Visibility 图标在 icons-extended，不想加依赖就用文字按钮）

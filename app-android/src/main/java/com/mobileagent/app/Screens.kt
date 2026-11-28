@@ -822,13 +822,17 @@ private val apiGuides = listOf(
     ),
 )
 
-/** 打开浏览器访问官网；无浏览器时静默忽略（只建议不强制） */
+/** 在应用内浏览器打开官网（不跳系统浏览器）；失败时兜底到外部浏览器 */
 private fun openUrl(ctx: android.content.Context, url: String) {
     runCatching {
-        ctx.startActivity(
-            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
+        BrowserActivity.start(ctx, url)
+    }.onFailure {
+        runCatching {
+            ctx.startActivity(
+                android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
     }
 }
 

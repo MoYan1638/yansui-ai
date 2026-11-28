@@ -1,7 +1,7 @@
 {
-  "version": "0.8.33",
-  "code": 69,
-  "notes": "发布前排查：修复历史列表/清空对话在 Android 8-13 的 toList 崩溃；修复引导页状态重组丢失；修复前台服务在 Android 12+/14+ 的启动限制崩溃（白名单豁免+兜底+类型签名）。",
-  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.33/yansui-ai-0.8.33-release.apk",
-  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.33/yansui-ai-0.8.33-release.apk"
+  "version": "0.8.34",
+  "code": 70,
+  "notes": "API Key 官网教程改为应用内浏览器打开，不再跳系统浏览器；网页可回退、完成后返回应用。",
+  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.34/yansui-ai-0.8.34-release.apk",
+  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.34/yansui-ai-0.8.34-release.apk"
 }

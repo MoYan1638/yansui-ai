@@ -31,6 +31,12 @@
             </intent-filter>
         </activity>
 
+        <!-- 应用内浏览器：API Key 官网教程等链接，不跳系统浏览器 -->
+        <activity
+            android:name=".BrowserActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- 主动任务：闹钟拉起 → 前台服务保活执行长任务（常驻通知，系统不杀） -->
         <receiver android:name=".CronTaskReceiver" android:exported="false" />
         <service
