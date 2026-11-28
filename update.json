@@ -1,7 +1,7 @@
 {
-  "version": "0.8.22",
-  "code": 58,
-  "notes": "设置页新增「API Keys·各厂商独立保存」区块：deepseek/moonshot/智谱/千问/minimax/硅基流动各自一行掩码保存，切换模型时自动取对应厂商的 Key，互不覆盖。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.22/yansui-ai-0.8.22-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.22/yansui-ai-0.8.22-release.apk"
+  "version": "0.8.23",
+  "code": 59,
+  "notes": "API Keys 管理区块每行增加显示/隐藏切换：默认掩码，点一下可临时看明文核对，与密码框交互一致。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.23/yansui-ai-0.8.23-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.23/yansui-ai-0.8.23-release.apk"
 }
