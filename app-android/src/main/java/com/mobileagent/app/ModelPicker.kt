@@ -377,7 +377,7 @@ private fun CustomModelDialog(engine: AgentEngine, onDismiss: () -> Unit, onSave
                 )
                 OutlinedTextField(
                     value = key, onValueChange = { key = it },
-                    label = { Text("API Key") }, singleLine = true,
+                    label = { Text("API Key（本地/免鉴权接口可留空）") }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)
@@ -391,7 +391,7 @@ private fun CustomModelDialog(engine: AgentEngine, onDismiss: () -> Unit, onSave
                     engine.saveConfig(baseUrl, key, model)
                     onSaved()
                 },
-                enabled = baseUrl.isNotBlank() && model.isNotBlank() && key.isNotBlank()
+                enabled = baseUrl.isNotBlank() && model.isNotBlank()
             ) { Text("保存并使用") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }

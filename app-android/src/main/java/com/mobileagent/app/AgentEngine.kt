@@ -186,9 +186,11 @@ class AgentEngine(
             maxRounds = maxRounds.coerceIn(1, 40),
             compressRatio = 0.70
         )
-        ModelConfig.save(configPath, cfg) { key -> ApiKeyVault.encrypt(key) ?: key }
+        // 空 Key 不加密直接落盘（没 Key 就没必要造一段空密文）
+        ModelConfig.save(configPath, cfg) { key -> if (key.isBlank()) key else ApiKeyVault.encrypt(key) ?: key }
         config = cfg
-        providerKeys[providerKeyOf(url)] = cfg.apiKey
+        if (cfg.apiKey.isBlank()) providerKeys.remove(providerKeyOf(url))
+        else providerKeys[providerKeyOf(url)] = cfg.apiKey
         saveKeys()
     }
 
@@ -196,8 +198,8 @@ class AgentEngine(
     fun keyFor(provider: String): String? = providerKeys[provider]
 
     fun setProviderKey(provider: String, key: String) {
-        if (key.isBlank()) return
-        providerKeys[provider] = key.trim()
+        // 空 Key = 该接口不需要密钥（本地 Ollama/免鉴权代理），清掉旧 Key 而不是拒绝保存
+        if (key.isBlank()) providerKeys.remove(provider) else providerKeys[provider] = key.trim()
         saveKeys()
     }
 

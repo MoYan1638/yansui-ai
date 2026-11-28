@@ -654,7 +654,7 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                     Field("MODEL", model, { model = it; testResult = null }, singleLine = true)
                     Spacer(Modifier.height(10.dp))
                     Field("API KEY", apiKey, { apiKey = it; error = null; testResult = null }, singleLine = true,
-                        hint = "任意 OpenAI 兼容接口均可")
+                        hint = "任意 OpenAI 兼容接口均可；免鉴权接口（如本地模型）可留空")
                     testResult?.let {
                         Spacer(Modifier.height(8.dp))
                         Text(it, style = MonoStyle, fontSize = 11.sp,
@@ -692,7 +692,7 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                                     testResult = r
                                 }.start()
                         },
-                        enabled = baseUrl.isNotBlank() && model.isNotBlank() && apiKey.isNotBlank(),
+                        enabled = baseUrl.isNotBlank() && model.isNotBlank(),
                         shape = RoundedCornerShape(8.dp)
                     ) { Text("测试连接") }
                 }
@@ -715,8 +715,8 @@ fun OnboardingScreen(engine: AgentEngine, onDone: () -> Unit) {
                 onClick = {
                     when (step) {
                         2 -> {
-                            if (apiKey.isBlank() || baseUrl.isBlank() || model.isBlank()) {
-                                error = "三项都要填（Key 在各模型平台的控制台获取）"
+                            if (baseUrl.isBlank() || model.isBlank()) {
+                                error = "接口地址和模型名必填；API Key 可留空（本地/免鉴权接口）"
                             } else step = 3
                         }
                         3 -> {
@@ -1535,7 +1535,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                         Spacer(Modifier.height(10.dp))
                         Field("API KEY", apiKey, { apiKey = it; savedTip = false }, singleLine = true,
                             masked = true,
-                            hint = "Key 按厂商独立加密保存，切换供应商自动带出对应 Key")
+                            hint = "按厂商独立加密保存；免鉴权接口（如本地模型）可留空")
                     }
                 }
 
@@ -1550,7 +1550,6 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                             val key = apiKey.trim()
                             when {
                                 baseUrl.isBlank() || model.isBlank() -> error = "接口地址和模型名都要填"
-                                key.isBlank() -> error = "请填写 API Key"
                                 else -> {
                                     // Key 按当前厂商存一份再落配置，切供应商回来时自动带出
                                     engine.setProviderKey(providerKeyOf(baseUrl), key)
