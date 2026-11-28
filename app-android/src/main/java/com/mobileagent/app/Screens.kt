@@ -147,6 +147,22 @@ private fun SectionLabel(text: String) {
     )
 }
 
+/** 设置页分区卡片：每个板块独立描边，不再一整片文字堆在一起 */
+@Composable
+private fun SettingsCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        androidx.compose.foundation.layout.Column(
+            modifier = Modifier.padding(14.dp),
+            content = content
+        )
+    }
+}
+
 /** 描边小标签（tag/chip，原型 .tag .chip） */
 @Composable
 private fun TagChip(text: String, dim: Boolean = false, accent: Boolean = false) {
@@ -1447,6 +1463,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                 Spacer(Modifier.height(6.dp))
 
                 SectionLabel("会话")
+                SettingsCard {
                 var confirmClearChats by remember { mutableStateOf(false) }
                 var confirmClearChats2 by remember { mutableStateOf(false) }
                 var clearAck by remember { mutableStateOf(false) }
@@ -1534,8 +1551,10 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                }
 
                 SectionLabel("人设与记忆")
+                SettingsCard {
                 var editPersona by remember { mutableStateOf(false) }
                 var editMemory by remember { mutableStateOf(false) }
                 var distilling by remember { mutableStateOf(false) }
@@ -1654,8 +1673,10 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                         onSave = { engine.saveMemory(it) }
                     )
                 }
+                }
 
                 SectionLabel("后台活跃")
+                SettingsCard {
                 val pm = ctx.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
                 val whitelisted = pm.isIgnoringBatteryOptimizations(ctx.packageName)
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1689,8 +1710,10 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     lineHeight = 19.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                }
 
                 SectionLabel("命令行通道 · Shizuku（可选）")
+                SettingsCard {
                 val shizukuState = remember(shizukuTick) {
                     when {
                         ShizukuGate.granted() -> "ready"
@@ -1728,8 +1751,10 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     lineHeight = 19.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                }
 
                 SectionLabel("技能更新 · love-companion")
+                SettingsCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         when (skillUpdState) {
@@ -1797,8 +1822,10 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     lineHeight = 19.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                }
 
                 SectionLabel("应用更新")
+                SettingsCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         when (appUpdState) {
@@ -1843,8 +1870,10 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     lineHeight = 19.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                }
 
                 SectionLabel("主动任务（定时）")
+                SettingsCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         if (notifGranted) "● 任务通知已开启" else "○ 未开启任务通知",
@@ -1925,6 +1954,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                }
 
                 Spacer(Modifier.height(18.dp))
                 Text(

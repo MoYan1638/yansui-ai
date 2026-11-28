@@ -1,7 +1,7 @@
 {
-  "version": "0.8.27",
-  "code": 63,
-  "notes": "修复上下文压缩丢工具调用配对导致的 HTTP 400（工具结果失去归属被接口拒绝）；打开应用自动修复已损坏的会话记录；设置页回归 BASE URL/MODEL/API KEY 三行结构。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.27/yansui-ai-0.8.27-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.27/yansui-ai-0.8.27-release.apk"
+  "version": "0.8.28",
+  "code": 64,
+  "notes": "设置页分区改版：会话、人设记忆、后台活跃、Shizuku、技能更新、应用更新、主动任务各自独立卡片，不再一整片文字堆在一起。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.28/yansui-ai-0.8.28-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.28/yansui-ai-0.8.28-release.apk"
 }
