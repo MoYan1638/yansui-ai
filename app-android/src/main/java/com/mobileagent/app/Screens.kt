@@ -1200,7 +1200,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var baseUrl by remember(cfg) { mutableStateOf(cfg?.baseUrl ?: "https://api.deepseek.com/v1") }
     var model by remember(cfg) { mutableStateOf(cfg?.model ?: "deepseek-chat") }
-    var apiKey by remember(cfg) { mutableStateOf(cfg?.apiKey ?: "") }
+    // Key 不在本卡片编辑：统一在下方「API Keys · 各厂商独立保存」区块按厂商管理
     var savedTip by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showGuide by remember { mutableStateOf(false) }
@@ -1368,9 +1368,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                             modifier = Modifier.clickable {
                                 if (pair.first.isNotBlank()) {
                                     baseUrl = pair.first; model = pair.second; savedTip = false
-                                    // 切供应商换 Key：取该厂商已存的，没存过就清空，
-                                    // 避免上一家的 Key 被误存到这一家名下
-                                    apiKey = engine.keyFor(providerKeyOf(pair.first)) ?: ""
+                                    error = null
                                 }
                             }
                         ) {
@@ -1396,10 +1394,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                         Field("BASE URL", baseUrl, { baseUrl = it; savedTip = false }, singleLine = true)
                         Spacer(Modifier.height(10.dp))
                         Field("MODEL", model, { model = it; savedTip = false }, singleLine = true,
-                            hint = "按模型家族自动匹配提示词模板（deepseek / minimax / openai）")
-                        Spacer(Modifier.height(10.dp))
-                        Field("API KEY", apiKey, { apiKey = it; savedTip = false }, singleLine = true, masked = true,
-                            hint = "已加密存储于应用私有目录（Keystore 硬件加密），不上传")
+                            hint = "Key 在下方 API Keys 区块按厂商保存；自定义厂商会自动出现在区块末尾")
                     }
                 }
 
@@ -1411,11 +1406,15 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Button(
                         onClick = {
-                            if (apiKey.isBlank() || baseUrl.isBlank() || model.isBlank()) {
-                                error = "三项都不能为空"
-                            } else {
-                                engine.saveConfig(baseUrl, apiKey, model)
-                                savedTip = true; error = null
+                            val key = engine.keyFor(providerKeyOf(baseUrl))
+                            when {
+                                baseUrl.isBlank() || model.isBlank() -> error = "接口地址和模型名都要填"
+                                key.isNullOrBlank() ->
+                                    error = "该厂商还没有 Key，先在下方 API Keys 区块保存后再连接"
+                                else -> {
+                                    engine.saveConfig(baseUrl, key, model)
+                                    savedTip = true; error = null
+                                }
                             }
                         },
                         shape = RoundedCornerShape(8.dp)
@@ -1427,9 +1426,12 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                 }
 
                 SectionLabel("API Keys · 各厂商独立保存")
-                // 每家厂商一行，各自掩码保存；之后在供应商里切换或从模型弹层选模型时自动取对应厂商的 Key
-                val keyProviders = remember {
-                    ModelPresets.all.distinctBy { it.provider }.map { it.provider to it.baseUrl }
+                // 每家厂商一行，各自掩码保存；上方供应商/模型切换时自动取对应厂商的 Key。
+                // 自定义厂商（baseUrl 不在预设里）动态追加一行，保证任何接口都能存 Key
+                val keyProviders = remember(baseUrl) {
+                    val base = ModelPresets.all.distinctBy { it.provider }.map { it.provider to it.baseUrl }
+                    val cur = providerKeyOf(baseUrl)
+                    if (base.any { it.first == cur }) base else base + (cur to baseUrl)
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     keyProviders.forEach { (prov, provUrl) ->
