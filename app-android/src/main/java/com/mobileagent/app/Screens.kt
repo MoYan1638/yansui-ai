@@ -1567,7 +1567,14 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     ) { Text("保存") }
                     Spacer(Modifier.width(12.dp))
                     if (savedTip) {
-                        Text("● 已保存 · ${engine.config?.model}", style = MonoStyle, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                        // 有 Key = 已保存；空 Key = 免鉴权模式，旧 Key 已被清掉，两种状态分别提示
+                        Text(
+                            if (engine.config?.apiKey.isNullOrBlank()) "● 已清空 · 免鉴权模式"
+                            else "● 已保存 · ${engine.config?.model}",
+                            style = MonoStyle, fontSize = 11.sp,
+                            color = if (engine.config?.apiKey.isNullOrBlank()) MaterialTheme.colorScheme.secondary
+                            else MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
 

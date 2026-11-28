@@ -1,7 +1,7 @@
 {
-  "version": "0.8.40",
-  "code": 76,
-  "notes": "API Key 支持留空：本地模型（Ollama/LM Studio）等免鉴权接口不再被强制填 Key，接口地址和模型名填好即可保存使用；清空 Key 再保存即视为该接口无需密钥。",
-  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.40/yansui-ai-0.8.40-release.apk",
-  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.40/yansui-ai-0.8.40-release.apk"
+  "version": "0.8.41",
+  "code": 77,
+  "notes": "保存反馈区分状态：填了 Key 保存提示「已保存」，留空保存提示「已清空 · 免鉴权模式」，一眼知道这次存的是哪种。",
+  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.41/yansui-ai-0.8.41-release.apk",
+  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.41/yansui-ai-0.8.41-release.apk"
 }
