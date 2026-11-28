@@ -27,6 +27,9 @@ import java.nio.file.StandardCopyOption
 import kotlin.io.path.createDirectories
 import java.util.concurrent.atomic.AtomicBoolean
 
+/** 用户自定义供应商：保存后成为可选片，持久化在 data/custom-providers.json；Key 仍在 keys.json 加密 */
+data class CustomProvider(val name: String, val baseUrl: String, val model: String)
+
 /**
  * App 侧引擎封装：把 core 的 AgentLoop 接到 Android 上。
  * - 技能包随 APK 打包（assets/skills/），首次启动提取到 filesDir，之后每次启动覆盖刷新
@@ -46,6 +49,7 @@ class AgentEngine(
     val skillUpdateDir: Path get() = skillsDir // 供设置页技能热更新读取当前版本
     private val configPath: Path = root.resolve("config.json")
     private val keysPath: Path = root.resolve("keys.json")
+    private val customProvidersPath: Path = root.resolve("data").resolve("custom-providers.json")
     private val skillStatePath: Path = root.resolve("data").resolve("skills-state.json")
     private val historyPath: Path = root.resolve("data").resolve("history.json")
     private val streamPath: Path = root.resolve("data").resolve("stream.json") // 对话页完整显示流（含历史话题）
@@ -57,6 +61,7 @@ class AgentEngine(
     private val history = mutableListOf<JsonElement>() // 受 busy 标志保护，单任务串行
     private val stream = mutableListOf<JsonObject>()   // 对话页显示流：跨话题持久，模型上下文只跟 history
     private val providerKeys = mutableMapOf<String, String>() // 厂商 → Key，切换模型复用
+    private val customProviders = mutableListOf<CustomProvider>() // 用户自定义供应商（URL/模型名），持久化
     private val disabledSkills = mutableSetOf<String>() // 技能页开关的关闭状态，持久化
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -94,6 +99,7 @@ class AgentEngine(
         loadStream()  // 显示流恢复（含历史话题分隔；首次升级时从 history 迁移）
         config = ModelConfig.load(configPath) { ApiKeyVault.decrypt(it) ?: "" }
         loadKeys()
+        loadCustomProviders()
         // 老配置（手填时代）把 Key 归档到厂商名下，切换模型时直接可用
         config?.let {
             if (providerKeys[providerKeyOf(it.baseUrl)].isNullOrBlank()) {
@@ -193,6 +199,65 @@ class AgentEngine(
         if (key.isBlank()) return
         providerKeys[provider] = key.trim()
         saveKeys()
+    }
+
+    // ---- 自定义供应商：保存后成为可选片，可切换、可删除 ----
+
+    /** 当前已保存的自定义供应商（快照，供设置页渲染片） */
+    fun listCustomProviders(): List<CustomProvider> = customProviders.toList()
+
+    /**
+     * 登记/更新一个自定义供应商。同名（按 baseUrl 归一）覆盖，避免重复片。
+     * 名字取域名主体或用户给定，切走再回来时片仍按 baseUrl 匹配回显。
+     */
+    fun upsertCustomProvider(baseUrl: String, model: String, name: String? = null) {
+        val url = baseUrl.trim().trimEnd('/')
+        if (url.isBlank()) return
+        val label = name?.takeIf { it.isNotBlank() } ?: providerKeyOf(url)
+        val idx = customProviders.indexOfFirst { it.baseUrl == url }
+        if (idx >= 0) customProviders[idx] = CustomProvider(label, url, model.trim())
+        else customProviders.add(CustomProvider(label, url, model.trim()))
+        saveCustomProviders()
+    }
+
+    /** 删除自定义供应商，并清掉它名下保存的 Key */
+    fun removeCustomProvider(baseUrl: String) {
+        val url = baseUrl.trim().trimEnd('/')
+        val removed = customProviders.firstOrNull { it.baseUrl == url } ?: return
+        customProviders.remove(removed)
+        providerKeys.remove(providerKeyOf(url))
+        saveCustomProviders()
+        saveKeys()
+    }
+
+    private fun loadCustomProviders() {
+        if (ephemeralHistory) return
+        customProviders.clear()
+        if (!Files.exists(customProvidersPath)) return
+        runCatching {
+            val arr = Json.parseToJsonElement(customProvidersPath.readTextCompat()).jsonArray
+            arr.forEach { el ->
+                val o = el.jsonObject
+                val url = o["baseUrl"]?.jsonPrimitive?.contentOrNull ?: return@forEach
+                val model = o["model"]?.jsonPrimitive?.contentOrNull ?: ""
+                val name = o["name"]?.jsonPrimitive?.contentOrNull ?: providerKeyOf(url)
+                customProviders.add(CustomProvider(name, url, model))
+            }
+        }
+    }
+
+    private fun saveCustomProviders() {
+        if (ephemeralHistory) return
+        runCatching {
+            val arr = JsonArray(customProviders.map { p ->
+                buildJsonObject {
+                    put("name", JsonPrimitive(p.name))
+                    put("baseUrl", JsonPrimitive(p.baseUrl))
+                    put("model", JsonPrimitive(p.model))
+                }
+            })
+            customProvidersPath.writeTextCompat(arr.toString())
+        }
     }
 
     /** 切到预设模型：有 Key 直接切，没 Key 由 UI 先收集（key 参数） */

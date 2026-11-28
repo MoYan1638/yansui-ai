@@ -1,7 +1,7 @@
 {
-  "version": "0.8.37",
-  "code": 73,
-  "notes": "修复供应商「自定义…」片点击无反应：原先自定义项地址为空被判断跳过，现点它清空三行供手动填写，且自定义地址会正确高亮。",
-  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.37/yansui-ai-0.8.37-release.apk",
-  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.37/yansui-ai-0.8.37-release.apk"
+  "version": "0.8.38",
+  "code": 74,
+  "notes": "自定义 API 升级为可管理的供应商：保存后成为可选片、切走回来自动回显、片旁可删除（连同其 Key）；不再一保存就找不到。",
+  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.38/yansui-ai-0.8.38-release.apk",
+  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.38/yansui-ai-0.8.38-release.apk"
 }

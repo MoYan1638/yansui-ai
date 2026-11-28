@@ -1228,6 +1228,8 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     var savedTip by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showGuide by remember { mutableStateOf(false) }
+    var customTick by remember { mutableIntStateOf(0) } // 自定义供应商增删后重建供应商片
+    var confirmDelCustom by remember { mutableStateOf<String?>(null) } // 待删除的自定义供应商 baseUrl
 
     // Shizuku（可选能力，只建议不强制）
     var shizukuTick by remember { mutableIntStateOf(0) }
@@ -1392,18 +1394,28 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
         } else true
     }
 
-    // 供应商片：从内置预设生成，末尾留自定义；点片即切换 URL/模型并带出该厂商已存的 Key
-    val providers = remember {
+    // 供应商片：内置预设 + 用户已保存的自定义供应商 + 末尾「自定义…」新增入口。
+    // 点片切换 URL/模型并带出该厂商已存的 Key。customTick 变化时重建，反映增删。
+    val providers = remember(customTick) {
         val disp = mapOf(
             "deepseek" to "deepseek", "moonshot" to "kimi", "zhipu" to "智谱",
             "qwen" to "通义", "minimax" to "minimax", "siliconflow" to "硅基流动"
         )
-        ModelPresets.all.distinctBy { it.provider }.map { p ->
+        val builtin = ModelPresets.all.distinctBy { it.provider }.map { p ->
             (disp[p.provider] ?: p.provider) to (p.baseUrl to p.model)
-        } + listOf(
-            "openai" to ("https://api.openai.com/v1" to "gpt-4o-mini"),
-            "自定义…" to ("" to "")
-        )
+        }.toMutableList()
+        builtin.add("openai" to ("https://api.openai.com/v1" to "gpt-4o-mini"))
+        // 已保存的自定义供应商：按 baseUrl 匹配（与内置片同源渲染）
+        engine.listCustomProviders().forEach { cp ->
+            builtin.add(cp.name to (cp.baseUrl to cp.model))
+        }
+        builtin.toList() + listOf("自定义…" to ("" to ""))
+    }
+    // 已保存自定义片的 baseUrl 集合，用来给这些片显示删除按钮
+    val customUrls = remember(customTick) { engine.listCustomProviders().map { it.baseUrl }.toSet() }
+    // 内置厂商地址集合：保存时命中它们就不登记为自定义供应商
+    val builtinUrls = remember {
+        (ModelPresets.all.map { it.baseUrl.trimEnd('/') } + "https://api.openai.com/v1").toSet()
     }
 
     Column(
@@ -1434,36 +1446,49 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     // 当前地址是否属于某个内置厂商；不属于时高亮「自定义…」片
                     val usingBuiltIn = providers.any { it.first.isNotBlank() && it.second.first == baseUrl }
                     providers.forEach { (name, pair) ->
-                        val isCustom = pair.first.isBlank()
-                        val sel = if (isCustom) !usingBuiltIn else pair.first == baseUrl
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                            else MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(
-                                1.dp,
-                                if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                            ),
-                            modifier = Modifier.clickable {
-                                if (isCustom) {
-                                    // 自定义：清空三行让用户填自己的 OpenAI 兼容接口
-                                    baseUrl = ""; model = ""; apiKey = ""
-                                } else {
-                                    baseUrl = pair.first; model = pair.second
-                                    apiKey = engine.keyFor(providerKeyOf(pair.first)) ?: ""
+                        val isAddNew = pair.first.isBlank() // 末尾「自定义…」新增入口
+                        val isSavedCustom = customUrls.contains(pair.first) // 用户已保存的自定义片
+                        val sel = if (isAddNew) !usingBuiltIn else pair.first == baseUrl
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                                else MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                                ),
+                                modifier = Modifier.clickable {
+                                    if (isAddNew) {
+                                        // 新增：清空三行让用户填自己的 OpenAI 兼容接口
+                                        baseUrl = ""; model = ""; apiKey = ""
+                                    } else {
+                                        baseUrl = pair.first; model = pair.second
+                                        apiKey = engine.keyFor(providerKeyOf(pair.first)) ?: ""
+                                    }
+                                    savedTip = false
+                                    error = null
                                 }
-                                savedTip = false
-                                error = null
+                            ) {
+                                Text(
+                                    name,
+                                    style = MonoStyle,
+                                    fontSize = 11.sp,
+                                    color = if (sel) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
                             }
-                        ) {
-                            Text(
-                                name,
-                                style = MonoStyle,
-                                fontSize = 11.sp,
-                                color = if (sel) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            )
+                            if (isSavedCustom) {
+                                // 自定义供应商可删除（按 baseUrl 匹配）
+                                TextButton(
+                                    onClick = { confirmDelCustom = pair.first },
+                                    modifier = Modifier.height(30.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp)
+                                ) {
+                                    Text("×", fontSize = 15.sp, color = MaterialTheme.colorScheme.error)
+                                }
+                            }
                         }
                     }
                 }
@@ -1501,6 +1526,11 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                                     // Key 按当前厂商存一份再落配置，切供应商回来时自动带出
                                     engine.setProviderKey(providerKeyOf(baseUrl), key)
                                     engine.saveConfig(baseUrl, key, model)
+                                    // 非内置地址登记为自定义供应商：保存后成为可选片，切走再回来仍能回显/切换
+                                    if (baseUrl.trimEnd('/') !in builtinUrls) {
+                                        engine.upsertCustomProvider(baseUrl, model)
+                                        customTick++
+                                    }
                                     savedTip = true; error = null
                                 }
                             }
@@ -2045,6 +2075,36 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+
+        // 删除自定义供应商确认（放在 LazyColumn 外，避免随列表滚动）
+        confirmDelCustom?.let { url ->
+            AlertDialog(
+                onDismissRequest = { confirmDelCustom = null },
+                title = { Text("删除自定义供应商") },
+                text = {
+                    Text(
+                        "将移除「${providerKeyOf(url)}」这个供应商片，并删除它保存的 API Key。当前若正在使用该地址，需重新配置。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        engine.removeCustomProvider(url)
+                        // 若正删掉的是当前使用地址，回到默认 DeepSeek
+                        if (baseUrl.trimEnd('/') == url.trimEnd('/')) {
+                            baseUrl = "https://api.deepseek.com/v1"; model = "deepseek-chat"; apiKey = ""
+                        }
+                        customTick++
+                        savedTip = false
+                        confirmDelCustom = null
+                    }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmDelCustom = null }) { Text("取消") }
+                }
+            )
         }
     }
 
