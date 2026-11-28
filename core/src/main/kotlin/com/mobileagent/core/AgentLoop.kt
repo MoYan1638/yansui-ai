@@ -251,7 +251,14 @@ class AgentLoop(
                     put("content", JsonPrimitive("[早期工具结果已压缩]"))
                 }
             } else {
-                history[i] = msg(role, "[压缩] ${m["content"]?.jsonPrimitive?.contentOrNull?.take(100) ?: ""}")
+                // assistant 带 tool_calls 时必须原样保留 tool_calls：
+                // 丢掉它，紧随其后的 tool 结果消息就成了「孤儿」，DeepSeek 等会直接 400
+                val tc = m["tool_calls"]
+                history[i] = buildJsonObject {
+                    put("role", JsonPrimitive(role))
+                    if (role == "assistant" && tc != null) put("tool_calls", tc)
+                    put("content", JsonPrimitive("[压缩] ${m["content"]?.jsonPrimitive?.contentOrNull?.take(100) ?: ""}"))
+                }
             }
         }
     }

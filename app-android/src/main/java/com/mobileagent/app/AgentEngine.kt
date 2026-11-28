@@ -208,7 +208,26 @@ class AgentEngine(context: Context) {
         runCatching {
             val arr = Json.parseToJsonElement(historyPath.readTextCompat()).jsonArray
             history.clear()
-            history.addAll(arr)
+            // 修复旧版本压缩 bug 留下的「孤儿 tool 消息」：
+            // 前面没有带 tool_calls 的 assistant 时，tool 消息会被 DeepSeek 直接 400，
+            // 这里加载时顺手剔除，并记录待补错的 user 消息（孤儿前面通常是压缩占位）
+            val clean = mutableListOf<JsonElement>()
+            var prevHadToolCalls = false
+            for (el in arr) {
+                val obj = el as? JsonObject ?: continue
+                when (obj["role"]?.jsonPrimitive?.content) {
+                    "assistant" -> {
+                        clean.add(el)
+                        prevHadToolCalls = obj["tool_calls"] != null
+                    }
+                    "tool" -> if (!prevHadToolCalls) continue else {
+                        clean.add(el); prevHadToolCalls = false
+                    }
+                    else -> { clean.add(el); prevHadToolCalls = false }
+                }
+            }
+            history.addAll(clean)
+            if (clean.size != arr.size) saveHistory()
         }
     }
 
