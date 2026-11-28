@@ -1,7 +1,7 @@
 {
-  "version": "0.8.23",
-  "code": 59,
-  "notes": "API Keys 管理区块每行增加显示/隐藏切换：默认掩码，点一下可临时看明文核对，与密码框交互一致。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.23/yansui-ai-0.8.23-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.23/yansui-ai-0.8.23-release.apk"
+  "version": "0.8.24",
+  "code": 60,
+  "notes": "去掉供应商卡片里重复的 API KEY 输入框：Key 统一在下方「API Keys·各厂商独立保存」区块管理；自定义厂商会自动出现在区块末尾；未保存该厂商 Key 时保存会明确提示。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.24/yansui-ai-0.8.24-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.24/yansui-ai-0.8.24-release.apk"
 }
