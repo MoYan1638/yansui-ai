@@ -1503,6 +1503,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                 var confirmClearChats by remember { mutableStateOf(false) }
                 var confirmClearChats2 by remember { mutableStateOf(false) }
                 var clearAck by remember { mutableStateOf(false) }
+                var confirmClearMemory by remember { mutableStateOf(false) }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedButton(onClick = { engine.startNewSession() }, shape = RoundedCornerShape(8.dp)) { Text("新会话") }
@@ -1510,9 +1511,30 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                             Text("清空对话", color = MaterialTheme.colorScheme.error)
                         }
                     }
-                    OutlinedButton(onClick = { engine.clearMemory() }, shape = RoundedCornerShape(8.dp)) {
-                        Text("清空长期记忆")
+                    OutlinedButton(onClick = { confirmClearMemory = true }, shape = RoundedCornerShape(8.dp)) {
+                        Text("清空长期记忆", color = MaterialTheme.colorScheme.error)
                     }
+                }
+                if (confirmClearMemory) {
+                    AlertDialog(
+                        onDismissRequest = { confirmClearMemory = false },
+                        title = { Text("清空长期记忆？") },
+                        text = {
+                            Text(
+                                "将删除 Agent 跨会话记住的全部信息（喜好、约定、重要日期等），不可恢复。清空后需要重新教它。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                engine.clearMemory(); confirmClearMemory = false
+                            }) { Text("确认清空", color = MaterialTheme.colorScheme.error) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmClearMemory = false }) { Text("取消") }
+                        }
+                    )
                 }
                 if (confirmClearChats) {
                     // 第一级警告：明确列出会删什么

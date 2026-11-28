@@ -140,8 +140,9 @@ class CronTaskReceiver : BroadcastReceiver() {
         val pending = goAsync() // 给后台执行留时间
         Thread {
             try {
-                // 独立引擎实例跑任务：与 UI 会话共用检查点文件，任务对话进历史
-                val engine = AgentEngine(context)
+                // 独立引擎实例跑任务：用临时上下文，不读写用户对话检查点——
+                // 否则到点执行时若用户正在聊天，两个引擎同时读写 history.json 会互相覆盖、丢失对话
+                val engine = AgentEngine(context, ephemeralHistory = true)
                 engine.initialize()
                 val result = CompletableFuture<String>()
                 engine.send(

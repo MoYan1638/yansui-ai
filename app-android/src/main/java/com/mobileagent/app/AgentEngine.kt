@@ -34,7 +34,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - 文件/记忆工具沙箱 = 应用私有目录；run_command 在移动端一律拒绝（无 cmd.exe，也绝不该有）
  * - 会话检查点落盘 data/history.json，重启后恢复（模型上下文与界面气泡流同步重建）
  */
-class AgentEngine(context: Context) {
+class AgentEngine(
+    context: Context,
+    /** 定时主动任务用：每次全新空上下文，不读写用户对话检查点，避免与 UI 会话互相覆盖 */
+    private val ephemeralHistory: Boolean = false
+) {
 
     private val appContext = context.applicationContext
     val root: Path = appContext.filesDir.toPath()
@@ -204,6 +208,7 @@ class AgentEngine(context: Context) {
     // ---- 会话检查点（自研：OpenAI 消息数组整体 JSON 落盘，启动时恢复） ----
 
     private fun loadHistory() {
+        if (ephemeralHistory) return // 定时任务：全新上下文，绝不读用户对话
         if (!Files.exists(historyPath)) return
         runCatching {
             val arr = Json.parseToJsonElement(historyPath.readTextCompat()).jsonArray
@@ -212,18 +217,21 @@ class AgentEngine(context: Context) {
             // 前面没有带 tool_calls 的 assistant 时，tool 消息会被 DeepSeek 直接 400，
             // 这里加载时顺手剔除，并记录待补错的 user 消息（孤儿前面通常是压缩占位）
             val clean = mutableListOf<JsonElement>()
-            var prevHadToolCalls = false
+            // 一条 assistant 可能声明多个并行 tool_calls，后面紧跟多条 tool 结果——
+            // 必须按声明数量逐条保留，不能用单个布尔（否则第 2 条起被误判为孤儿删掉，
+            // 造成 assistant 有 N 个调用却只剩 1 个结果，下次请求仍会 400）。
+            var pendingToolResults = 0
             for (el in arr) {
                 val obj = el as? JsonObject ?: continue
                 when (obj["role"]?.jsonPrimitive?.content) {
                     "assistant" -> {
                         clean.add(el)
-                        prevHadToolCalls = obj["tool_calls"] != null
+                        pendingToolResults = obj["tool_calls"]?.jsonArray?.size ?: 0
                     }
-                    "tool" -> if (!prevHadToolCalls) continue else {
-                        clean.add(el); prevHadToolCalls = false
-                    }
-                    else -> { clean.add(el); prevHadToolCalls = false }
+                    "tool" -> if (pendingToolResults > 0) {
+                        clean.add(el); pendingToolResults--
+                    } // 否则是孤儿 tool，丢弃
+                    else -> { clean.add(el); pendingToolResults = 0 }
                 }
             }
             history.addAll(clean)
@@ -232,6 +240,7 @@ class AgentEngine(context: Context) {
     }
 
     private fun saveHistory() {
+        if (ephemeralHistory) return // 定时任务：绝不写用户对话检查点
         runCatching {
             historyPath.parent?.createDirectories()
             historyPath.writeTextCompat(JsonArray(history).toString())

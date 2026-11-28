@@ -48,3 +48,9 @@
 - 修复：①enqueueDownload 加 idx 参数；②新增 nextSource()；③Screens 加 appDlSrcIdx + onDownloadFailed(id,reason)，失败自动切下一源重下（用 id 比对防止广播与轮询双触发，切源前 remove 旧任务避免同名文件占用）；④下载按钮重置 idx=0
 - 镜像实测（无代理模拟手机）：github 直连超时 0B；ghproxy.net 30s 仅 3.9MB（不稳，弃用）；gh-proxy.com 完整 8.7MB 可用 → 定为 apk 主源，github 直连降为备用
 - 规则：update.json 里 apk 字段放国内可达镜像、apk_mirror 放 github 直连；UPDATE_MIRROR 也从 ghproxy.net 改 gh-proxy.com
+
+## 2026-11-28 设置页系统状态从外部返回不刷新（v0.8.30）
+- 现象：去系统设置开电池白名单/通知权限/Shizuku 授权后返回 App，设置页状态还是旧的，必须重进应用才刷新
+- 根因：这些状态（isIgnoringBatteryOptimizations / checkSelfPermission / ShizukuGate）都是重组时直接读系统值，但从外部 Activity 返回不会触发本页重组；shizukuTick 只在点按钮时 ++
+- 修复：SettingsScreen 顶部加 resumeTick，用 DisposableEffect + LifecycleEventObserver 监听 ON_RESUME 时 ++；三个状态分别 remember(resumeTick) / remember(shizukuTick, resumeTick) 依赖它，返回即刷新
+- 规则：Compose 里凡是"读系统/外部状态"的 UI，都要挂一个 lifecycle ON_RESUME tick 驱动，否则从系统页返回不会更新

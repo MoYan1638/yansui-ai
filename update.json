@@ -1,7 +1,7 @@
 {
-  "version": "0.8.30",
-  "code": 66,
-  "notes": "后台设置（电池白名单/通知权限/Shizuku）从系统页返回即自动刷新，无需重进应用；硅基流动预设名中性化。",
-  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.30/yansui-ai-0.8.30-release.apk",
-  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.30/yansui-ai-0.8.30-release.apk"
+  "version": "0.8.31",
+  "code": 67,
+  "notes": "修复并行工具调用结果被误删导致的400；定时任务改用临时上下文避免与聊天互相覆盖；清空长期记忆加二次确认；统一技能更新镜像。",
+  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.31/yansui-ai-0.8.31-release.apk",
+  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.31/yansui-ai-0.8.31-release.apk"
 }
