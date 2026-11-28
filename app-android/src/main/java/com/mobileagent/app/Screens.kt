@@ -1195,6 +1195,7 @@ private fun PersonaMemoryDialog(
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     val cfg = engine.config
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -1325,12 +1326,19 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
             android.content.pm.PackageManager.PERMISSION_GRANTED
     } else true
 
-    val providers = listOf(
-        "deepseek" to ("https://api.deepseek.com/v1" to "deepseek-chat"),
-        "智谱" to ("https://open.bigmodel.cn/api/paas/v4" to "glm-4.6"),
-        "openai" to ("https://api.openai.com/v1" to "gpt-4o-mini"),
-        "自定义…" to ("" to "")
-    )
+    // 供应商片与下方 API Keys 区块同源：都从内置预设生成，永远一致；openai 不在预设里单独补上，末尾留自定义
+    val providers = remember {
+        val disp = mapOf(
+            "deepseek" to "deepseek", "moonshot" to "kimi", "zhipu" to "智谱",
+            "qwen" to "通义", "minimax" to "minimax", "siliconflow" to "硅基流动"
+        )
+        ModelPresets.all.distinctBy { it.provider }.map { p ->
+            (disp[p.provider] ?: p.provider) to (p.baseUrl to p.model)
+        } + listOf(
+            "openai" to ("https://api.openai.com/v1" to "gpt-4o-mini"),
+            "自定义…" to ("" to "")
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -1351,8 +1359,10 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                 }
 
                 SectionLabel("供应商")
-                Row(
+                // 片子多了会撑破一行，自动换行排布
+                androidx.compose.foundation.layout.FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     providers.forEach { (name, pair) ->

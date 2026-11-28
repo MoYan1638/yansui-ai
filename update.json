@@ -1,7 +1,7 @@
 {
-  "version": "0.8.24",
-  "code": 60,
-  "notes": "去掉供应商卡片里重复的 API KEY 输入框：Key 统一在下方「API Keys·各厂商独立保存」区块管理；自定义厂商会自动出现在区块末尾；未保存该厂商 Key 时保存会明确提示。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.24/yansui-ai-0.8.24-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.24/yansui-ai-0.8.24-release.apk"
+  "version": "0.8.25",
+  "code": 61,
+  "notes": "供应商片补齐与 API Keys 区块一致：新增 kimi、通义千问、minimax、硅基流动，两边同一数据源生成永不脱节；片过多自动换行。",
+  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.25/yansui-ai-0.8.25-release.apk",
+  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.25/yansui-ai-0.8.25-release.apk"
 }
