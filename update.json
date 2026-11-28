@@ -1,7 +1,7 @@
 {
-  "version": "0.8.31",
-  "code": 67,
-  "notes": "修复并行工具调用结果被误删导致的400；定时任务改用临时上下文避免与聊天互相覆盖；清空长期记忆加二次确认；统一技能更新镜像。",
-  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.31/yansui-ai-0.8.31-release.apk",
-  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.31/yansui-ai-0.8.31-release.apk"
+  "version": "0.8.32",
+  "code": 68,
+  "notes": "移动端加固：文件改为原子写（进程被杀不再写坏会话/密钥）；定时主动任务改前台服务保活，后台不再被系统冻结腰斩。",
+  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.32/yansui-ai-0.8.32-release.apk",
+  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.32/yansui-ai-0.8.32-release.apk"
 }

@@ -136,62 +136,12 @@ class CronTaskReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getStringExtra(CronScheduler.EXTRA_TASK_ID) ?: return
-        val task = CronStore.all(context).firstOrNull { it.id == id } ?: return
-        val pending = goAsync() // 给后台执行留时间
-        Thread {
-            try {
-                // 独立引擎实例跑任务：用临时上下文，不读写用户对话检查点——
-                // 否则到点执行时若用户正在聊天，两个引擎同时读写 history.json 会互相覆盖、丢失对话
-                val engine = AgentEngine(context, ephemeralHistory = true)
-                engine.initialize()
-                val result = CompletableFuture<String>()
-                engine.send(
-                    input = task.prompt,
-                    onToolStart = { _, _ -> },
-                    onToolCall = { _, _, _ -> },
-                    onDone = { reply, _, _, _ -> result.complete(reply) },
-                    onFailed = { msg -> result.complete("任务失败：$msg") }
-                )
-                val reply = result.get(6, TimeUnit.MINUTES)
-                CronStore.updateResult(context, id, reply)
-                notify(context, "● Agent 任务完成：${task.prompt.take(20)}", reply)
-                if (task.repeat) CronScheduler.scheduleNext(context, task)
-                else CronStore.remove(context, id) // 单次任务跑完即清
-            } catch (e: Exception) {
-                notify(context, "● Agent 任务失败：${task.prompt.take(20)}", e.message ?: e.javaClass.simpleName)
-            } finally {
-                pending.finish()
-            }
-        }.start()
+        // 手机切后台会冻结/杀进程：goAsync 只有约 10 秒窗口，撑不住 Agent 的多轮任务。
+        // 改由前台服务保活执行（常驻通知，系统不杀），Receiver 只负责拉起。
+        val svc = Intent(context, AgentTaskService::class.java).putExtra(CronScheduler.EXTRA_TASK_ID, id)
+        androidx.core.content.ContextCompat.startForegroundService(context, svc)
     }
 
-    private fun notify(context: Context, title: String, text: String) {
-        // 只建议不强制：未授权通知权限则静默把结果写进 lastResult，不打扰
-        if (Build.VERSION.SDK_INT >= 33 &&
-            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) return
-        val nm = context.getSystemService(NotificationManager::class.java) ?: return
-        if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(
-                NotificationChannel("agent_tasks", "主动任务", NotificationManager.IMPORTANCE_DEFAULT)
-            )
-        }
-        val pi = PendingIntent.getActivity(
-            context, 0,
-            Intent(context, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val n = NotificationCompat.Builder(context, "agent_tasks")
-            .setSmallIcon(android.R.drawable.stat_notify_chat)
-            .setContentTitle(title)
-            .setContentText(text.take(150))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text.take(1500)))
-            .setContentIntent(pi)
-            .setAutoCancel(true)
-            .build()
-        nm.notify(title.hashCode(), n)
-    }
 }
 
 /** 重启后重排全部任务 */

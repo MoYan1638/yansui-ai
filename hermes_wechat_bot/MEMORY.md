@@ -54,3 +54,10 @@
 - 根因：这些状态（isIgnoringBatteryOptimizations / checkSelfPermission / ShizukuGate）都是重组时直接读系统值，但从外部 Activity 返回不会触发本页重组；shizukuTick 只在点按钮时 ++
 - 修复：SettingsScreen 顶部加 resumeTick，用 DisposableEffect + LifecycleEventObserver 监听 ON_RESUME 时 ++；三个状态分别 remember(resumeTick) / remember(shizukuTick, resumeTick) 依赖它，返回即刷新
 - 规则：Compose 里凡是"读系统/外部状态"的 UI，都要挂一个 lifecycle ON_RESUME tick 驱动，否则从系统页返回不会更新
+
+## 2026-11-28 代码审查修复（v0.8.31）
+- 并行 tool_calls 清理 bug：AgentEngine.loadHistory 清理孤儿 tool 时原用单个 boolean（prevHadToolCalls），一条 assistant 带 N 个并行 tool_calls 时只保留第 1 条 tool 结果，第 2 条起被误删 → assistant 声明 N 个调用却剩 1 个结果，DeepSeek 仍 400。改成 pendingToolResults 计数，按声明数量逐条保留
+- 定时任务上下文隔离：CronTaskReceiver 用独立 AgentEngine 但与 UI 共用 history.json，到点执行若用户正在聊天会互相覆盖丢对话。给 AgentEngine 加 ephemeralHistory 参数，定时任务用它 → loadHistory/saveHistory 直接 return，全新空上下文，不碰用户对话
+- 清空长期记忆原无二次确认（不可恢复），补 AlertDialog 确认
+- SkillUpdater 的 BASE_MIRROR 从 ghproxy.net（实测不稳）统一改 gh-proxy.com
+- 规则：同一检查点文件不能被多个 AgentEngine 实例同时读写；孤儿 tool 清理必须按 tool_calls 数量计数，不能用布尔

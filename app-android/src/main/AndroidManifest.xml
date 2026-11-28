@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 应用内检查更新后跳系统安装器安装新包（不静默安装，需用户确认） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 定时主动任务用前台服务保活（手机后台会冻结/杀进程），Android 14+ 需声明 dataSync 类型权限 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:label="@string/app_name"
@@ -28,8 +31,12 @@
             </intent-filter>
         </activity>
 
-        <!-- 主动任务触发 + 重启重排 -->
+        <!-- 主动任务：闹钟拉起 → 前台服务保活执行长任务（常驻通知，系统不杀） -->
         <receiver android:name=".CronTaskReceiver" android:exported="false" />
+        <service
+            android:name=".AgentTaskService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <receiver android:name=".CronBootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
