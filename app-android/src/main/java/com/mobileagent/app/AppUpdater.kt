@@ -25,7 +25,7 @@ object AppUpdater {
     private const val UPDATE_RAW =
         "https://raw.githubusercontent.com/MoYan1638/yansui-ai/main/update.json"
     private const val UPDATE_MIRROR =
-        "https://ghproxy.net/https://raw.githubusercontent.com/MoYan1638/yansui-ai/main/update.json"
+        "https://gh-proxy.com/https://raw.githubusercontent.com/MoYan1638/yansui-ai/main/update.json"
 
     const val PREF = "app_update"
 
@@ -66,11 +66,12 @@ object AppUpdater {
         }.getOrNull()
     }
 
-    /** 提交系统下载任务，返回 download id（主线程调用即可） */
-    fun enqueueDownload(ctx: Context, release: Release): Long {
+    /** 提交系统下载任务，返回 download id（主线程调用即可）；idx 指向 urls 中的下载源（主源失败时切备用镜像） */
+    fun enqueueDownload(ctx: Context, release: Release, idx: Int = 0): Long {
         val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val name = "yansui-ai-${release.version}-release.apk"
-        val req = DownloadManager.Request(Uri.parse(release.urls.first()))
+        val url = release.urls.getOrElse(idx) { release.urls.first() }
+        val req = DownloadManager.Request(Uri.parse(url))
             .setTitle(name)
             .setDescription("言岁AI v${release.version} 更新包")
             .setMimeType("application/vnd.android.package-archive")
@@ -82,9 +83,14 @@ object AppUpdater {
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
             .putLong("download_id", id)
             .putString("download_version", release.version)
+            .putInt("download_idx", idx)
             .apply()
         return id
     }
+
+    /** 备用源索引：0=主源，1=备用；越界返回 -1（没有更多源可切） */
+    fun nextSource(currentIdx: Int, urlCount: Int): Int =
+        if (currentIdx + 1 < urlCount) currentIdx + 1 else -1
 
     /** 下载进度（0..100）；任务不存在返回 -1 */
     fun progress(ctx: Context, id: Long): Int = runCatching {

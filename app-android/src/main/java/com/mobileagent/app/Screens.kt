@@ -1240,7 +1240,30 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     var showAppUpd by remember { mutableStateOf(false) }
     var appDlId by remember { mutableLongStateOf(-1L) }
     var appDlProgress by remember { mutableIntStateOf(0) }
+    var appDlSrcIdx by remember { mutableIntStateOf(0) } // 当前下载源：0=主源，1=备用镜像
     val currentVer = remember { AppUpdater.currentVersion(ctx) }
+
+    // 下载失败：还有备用源就自动切过去重下，全失败才提示换网络。
+    // id 用于防止「完成广播」和「轮询」两条路径同时触发重复切换。
+    fun onDownloadFailed(id: Long, reason: String) {
+        if (id != appDlId || appUpdState != "downloading") return
+        val rel = appRelease
+        val next = rel?.let { AppUpdater.nextSource(appDlSrcIdx, it.urls.size) } ?: -1
+        if (rel != null && next >= 0) {
+            // 移除失败任务，避免同名目标文件被占用导致新任务直接失败
+            runCatching {
+                (ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).remove(id)
+            }
+            appDlSrcIdx = next
+            appUpdMsg = "主下载源失败，正在切换备用源…"
+            appDlId = AppUpdater.enqueueDownload(ctx, rel, next)
+            appDlProgress = 0
+            // 保持 downloading；appDlId 变化会让下面的轮询 effect 自动重启
+        } else {
+            appUpdMsg = reason
+            appUpdState = "error"
+        }
+    }
 
     fun checkAppUpdate() {
         if (appUpdState == "checking" || appUpdState == "downloading") return
@@ -1277,8 +1300,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     //（首次会先跳到「允许安装未知应用」授权页，授完再装）
                     AppUpdater.install(ctx, f)
                 } else {
-                    appUpdMsg = "下载失败或已取消"
-                    appUpdState = "error"
+                    onDownloadFailed(id, "下载失败或已取消")
                 }
             }
         }
@@ -1327,8 +1349,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                 }
                 break
             } else if (status == DownloadManager.STATUS_FAILED) {
-                appUpdMsg = "下载失败，请重试或换网络"
-                appUpdState = "error"
+                onDownloadFailed(appDlId, "下载失败，请重试或换网络")
                 break
             }
             appDlProgress = AppUpdater.progress(ctx, appDlId)
@@ -2057,8 +2078,10 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                 confirmButton = {
                     when (appUpdState) {
                         "available" -> TextButton(onClick = {
-                            appDlId = AppUpdater.enqueueDownload(ctx, rel)
+                            appDlSrcIdx = 0
+                            appDlId = AppUpdater.enqueueDownload(ctx, rel, 0)
                             appDlProgress = 0
+                            appUpdMsg = ""
                             appUpdState = "downloading"
                         }) { Text("下载更新") }
                         "downloading" -> TextButton(onClick = {}, enabled = false) { Text("下载中…") }

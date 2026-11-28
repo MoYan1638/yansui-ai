@@ -1,7 +1,7 @@
 {
-  "version": "0.8.28",
-  "code": 64,
-  "notes": "设置页分区改版：会话、人设记忆、后台活跃、Shizuku、技能更新、应用更新、主动任务各自独立卡片，不再一整片文字堆在一起。",
-  "apk": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.28/yansui-ai-0.8.28-release.apk",
-  "apk_mirror": "https://ghproxy.net/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.28/yansui-ai-0.8.28-release.apk"
+  "version": "0.8.29",
+  "code": 65,
+  "notes": "修复更新下载一直失败：改用可用镜像作主源，主源失败自动切换备用源重试。",
+  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.29/yansui-ai-0.8.29-release.apk",
+  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.29/yansui-ai-0.8.29-release.apk"
 }

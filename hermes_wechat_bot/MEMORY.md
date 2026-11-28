@@ -28,3 +28,17 @@
 - 落盘格式 `enc:v1:<ivB64>:<ctB64>`；无前缀视为旧明文，读时兼容、写时升级（自动迁移）
 - core 纯 Kotlin 模块不 import Android：加解密用钩子参数注入（`ModelConfig.load(path, decryptApiKey)`），实现放 App 层
 - 教训：系统组件（com.android.providers.downloads）发的广播必须 RECEIVER_EXPORTED，NOT_EXPORTED 在 Android 13+ 会被拦（见 v0.8.15）
+
+## 2026-11-28 上下文压缩丢 tool_calls → DeepSeek 400（v0.8.27）
+- 事故：工具调用多次后请求全报 HTTP 400 "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"
+- 根因：`AgentLoop.compressIfNeeded` 把早期 assistant 消息压成普通占位消息时丢掉 `tool_calls`，紧随其后的 tool 结果成孤儿
+- 修复两处：①压缩 assistant 时保留原 `tool_calls` 字段（只压 content）；②`AgentEngine.loadHistory` 加载旧检查点时剔除前面没有 tool_calls 的孤儿 tool 消息，避免用户已损坏的会话继续报错
+- 规则：OpenAI 兼容协议里 assistant(tool_calls) 与 tool(tool_call_id) 是严格配对，任何裁剪/压缩历史的操作都必须保配对
+
+## 2026-11-28 代理只通 api.github.com 时的 push 路线
+- 现象：Clash Verge 系统代理 53812，api.github.com 200 正常，但 CONNECT github.com:443 超时 → git push 502/Empty reply，gh release / API 正常
+- 最稳兜底（比 Contents API 改单文件更完整）：`GIT_SSH_COMMAND="ssh -o BatchMode=yes" git push ssh://git@ssh.github.com:443/OWNER/REPO.git main:main`
+  - SSH 走 443 复用 HTTPS 端口，绕开失效的 github.com CONNECT 规则
+  - 首次需接受 host key（`StrictHostKeyChecking=accept-new`）
+  - 本机 SSH 密钥读取会触发权限弹窗，需用户允许；被拒时当轮不要再重试
+- 顺序：优先直推；不通先试 SSH 443；仍不行再用 gh release + Contents API 兜底
