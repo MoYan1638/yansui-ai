@@ -153,6 +153,33 @@ object AppUpdater {
     }
 
     /**
+     * 启动时清理本应用所有「已装版本」的遗留下载任务（连同系统「下载完成」通知一起移除）。
+     * 关键：每次下载成功都会在通知栏留一条完成通知，任务不 remove 它就永远在，
+     * 点一下通知就会打开对应 apk 再弹一次安装器——历史版本攒下来就是「更新好了还一直弹」。
+     * 从任务标题解析版本号：<= 当前版本的视为已处理直接 remove；
+     * 比当前版本新的保留（那是还没装的包，由 resumeDownload 接管弹安装）。
+     */
+    fun clearFinishedTasks(ctx: Context, currentVer: String) {
+        runCatching {
+            val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val q = dm.query(DownloadManager.Query())
+            if (!q.moveToFirst()) return
+            val idxId = q.getColumnIndexOrThrow(DownloadManager.COLUMN_ID)
+            val idxStatus = q.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)
+            val idxTitle = q.getColumnIndexOrThrow(DownloadManager.COLUMN_TITLE)
+            do {
+                val status = q.getInt(idxStatus)
+                if (status != DownloadManager.STATUS_SUCCESSFUL && status != DownloadManager.STATUS_FAILED) continue
+                val title = q.getString(idxTitle) ?: continue
+                val ver = Regex("yansui-ai-(.+?)-release\\.apk").find(title)?.groupValues?.get(1)
+                if (ver == null || status == DownloadManager.STATUS_FAILED || !isNewer(ver, currentVer)) {
+                    dm.remove(q.getLong(idxId)) // 已装版本/失败任务：删任务+通知+安装包
+                }
+            } while (q.moveToNext())
+        }
+    }
+
+    /**
      * 启动时清理上次遗留的 cache 安装包副本。
      * 只删 cache/update.apk——私有目录那份由 DownloadManager 管理，afterInstallLaunched 里
      * dm.remove(id) 会自动删除；且若存在「已下载未安装」的包，删了它 resumeDownload 就取不出来。

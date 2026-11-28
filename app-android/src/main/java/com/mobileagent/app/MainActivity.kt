@@ -18,6 +18,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         engine.initialize()
+        // 启动即清理历史遗留的下载任务与「下载完成」通知：点通知会重开安装器，
+        // 必须在主界面（不进设置页）也生效，否则「更新好了还一直弹安装」
+        AppUpdater.clearFinishedTasks(this, AppUpdater.currentVersion(this))
+        AppUpdater.clearStaleApk(this)
         CronScheduler.scheduleAll(this) // 重启/重排主动任务（Octop restart-safe 思想的手机端实现）
         setContent {
             MobileAgentTheme {

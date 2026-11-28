@@ -94,3 +94,9 @@
 - BrowserActivity.kt：顶栏(返回/标题/浏览器兜底) + 进度条 + WebView；JS/DOM storage 开(平台控制台登录需要)、禁 file 访问；shouldOverrideUrlLoading 里 http(s) 留应用内、tel/mailto 交系统、其他协议拦掉；返回键 goBack 能退则退否则 finish；Android 15 强制 edge-to-edge 顶栏加 statusBar inset
 - 注册 Manifest：BrowserActivity exported=false；openUrl 改成 BrowserActivity.start，失败兜底外部 ACTION_VIEW
 - 发包前 lintRelease 务必跑（已固化为规矩）；SSH push 用 ssh://git@ssh.github.com:443 显式 URL 推完后，本地 origin/main 跟踪引用不会自动更新会显示 ahead N（假象），git fetch 该 SSH URL 后 git update-ref refs/remotes/origin/main FETCH_HEAD 修正
+
+## 2026-11-28 更新完成反复弹安装 + 安装包残留（v0.8.35）
+- 现象：更新装好后仍反复弹系统安装器；系统通知栏一直挂着「下载完成」，点一下又弹
+- 根因：下载任务成功后从没 dm.remove(id)，DownloadManager 的通知常驻且点通知会重发完成广播；resumeDownload 进设置页又读到同一个 SUCCESSFUL 旧记录重复拉起；autoInstall 无去重
+- 修复：①新增 AppUpdater.afterInstallLaunched(ctx,id)=dm.remove(任务,通知随之消失)+清 pref；②Screens 加 autoInstall(f,id) 用 autoInstalledId 去重，三处自动拉起(广播/轮询/resume)统一走它；③手动「立即安装」按钮拉起后也调 afterInstallLaunched；④clearStaleApk 只删 cache/update.apk（私有目录那份由 dm.remove 删，不能手动删否则已下载未安装的包会被毁）
+- 时序坑：cache/update.apk 不能拉起安装器当场删——安装器此刻可能还在读；留到下次进设置页 clearStaleApk 删

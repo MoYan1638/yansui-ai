@@ -1,7 +1,7 @@
 {
-  "version": "0.8.35",
-  "code": 71,
-  "notes": "修复更新完成后反复弹安装：拉起安装器即移除下载任务与系统通知、清空记录，同一任务只弹一次；安装包下次启动自动清理。",
-  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.35/yansui-ai-0.8.35-release.apk",
-  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.35/yansui-ai-0.8.35-release.apk"
+  "version": "0.8.36",
+  "code": 72,
+  "notes": "根治更新后反复弹安装：应用启动即清理全部历史遗留的下载任务与通知（点通知会重开安装器的根源），安装包一并删除；未安装的新包保留。",
+  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.36/yansui-ai-0.8.36-release.apk",
+  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.36/yansui-ai-0.8.36-release.apk"
 }
