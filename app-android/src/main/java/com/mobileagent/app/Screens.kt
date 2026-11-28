@@ -1257,7 +1257,19 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     var appDlId by remember { mutableLongStateOf(-1L) }
     var appDlProgress by remember { mutableIntStateOf(0) }
     var appDlSrcIdx by remember { mutableIntStateOf(0) } // 当前下载源：0=主源，1=备用镜像
+    var autoInstalledId by remember { mutableLongStateOf(-1L) } // 已自动拉起过安装的任务 id，防广播+轮询重复弹
     val currentVer = remember { AppUpdater.currentVersion(ctx) }
+
+    // 自动拉起安装（下载完成/恢复）：同一任务只弹一次，拉起后立刻移除下载任务与通知、清记录
+    fun autoInstall(f: File, id: Long) {
+        if (autoInstalledId == id) return
+        autoInstalledId = id
+        appApkFile = f
+        appUpdState = "ready"
+        showAppUpd = true
+        AppUpdater.install(ctx, f)
+        AppUpdater.afterInstallLaunched(ctx, id)
+    }
 
     // 下载失败：还有备用源就自动切过去重下，全失败才提示换网络。
     // id 用于防止「完成广播」和「轮询」两条路径同时触发重复切换。
@@ -1309,12 +1321,9 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                 if (id != appDlId) return
                 val f = AppUpdater.prepareInstall(ctx, id)
                 if (f != null) {
-                    appApkFile = f
-                    appUpdState = "ready"
-                    showAppUpd = true
                     // 直接拉起系统安装器：用户既然点了下载，就不用再多点一步
                     //（首次会先跳到「允许安装未知应用」授权页，授完再装）
-                    AppUpdater.install(ctx, f)
+                    autoInstall(f, id)
                 } else {
                     onDownloadFailed(id, "下载失败或已取消")
                 }
@@ -1334,15 +1343,16 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     // 进设置页时补偿一次：上次下载完成但广播没收到（页面切走/应用被杀），
     // 从 DownloadManager 记录的任务状态里恢复；已手动装过的残留也会被清理
     LaunchedEffect(Unit) {
+        // 每次进设置页先清掉上次遗留的安装包（此刻安装早已结束，删除安全）
+        AppUpdater.clearStaleApk(ctx)
         if (appUpdState == "idle") {
             Thread {
                 val r = AppUpdater.resumeDownload(ctx, currentVer)
                 if (r != null) {
                     appUpdMsg = "v${r.first} 更新包已就绪"
-                    appApkFile = r.second
-                    appUpdState = "ready"
-                    showAppUpd = true
-                    AppUpdater.install(ctx, r.second)
+                    val id = ctx.getSharedPreferences(AppUpdater.PREF, android.content.Context.MODE_PRIVATE)
+                        .getLong("download_id", -1L)
+                    autoInstall(r.second, id)
                 }
             }.start()
         }
@@ -1355,10 +1365,7 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
             if (status == DownloadManager.STATUS_SUCCESSFUL) {
                 val f = AppUpdater.prepareInstall(ctx, appDlId)
                 if (f != null) {
-                    appApkFile = f
-                    appUpdState = "ready"
-                    showAppUpd = true
-                    AppUpdater.install(ctx, f)
+                    autoInstall(f, appDlId)
                 } else {
                     appUpdMsg = "更新包校验失败，请重试"
                     appUpdState = "error"
@@ -1921,7 +1928,12 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     }
                     if (appUpdState == "ready") {
                         OutlinedButton(
-                            onClick = { appApkFile?.let { AppUpdater.install(ctx, it) } },
+                            onClick = {
+                                appApkFile?.let {
+                                    AppUpdater.install(ctx, it)
+                                    if (appDlId > 0) AppUpdater.afterInstallLaunched(ctx, appDlId)
+                                }
+                            },
                             shape = RoundedCornerShape(8.dp)
                         ) { Text("立即安装") }
                     }
@@ -2128,7 +2140,10 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                         }) { Text("下载更新") }
                         "downloading" -> TextButton(onClick = {}, enabled = false) { Text("下载中…") }
                         "ready" -> TextButton(onClick = {
-                            appApkFile?.let { AppUpdater.install(ctx, it) }
+                            appApkFile?.let {
+                                AppUpdater.install(ctx, it)
+                                if (appDlId > 0) AppUpdater.afterInstallLaunched(ctx, appDlId)
+                            }
                         }) { Text("立即安装") }
                     }
                 },

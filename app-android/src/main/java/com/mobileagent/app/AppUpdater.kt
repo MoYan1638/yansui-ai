@@ -76,8 +76,9 @@ object AppUpdater {
             .setDescription("言岁AI v${release.version} 更新包")
             .setMimeType("application/vnd.android.package-archive")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            // 下到应用私有目录（Android/data/包名/files/），微信同款：
-            // 文件管理里不留安装包，装完也不用清残留
+            // 下到应用私有目录（Android/data/包名/files/），微信同款：文件管理里不留安装包。
+            // 注意：下载任务本身仍要在拉起安装器后 remove 掉，否则系统「下载完成」通知常驻，
+            // 点一下就又弹安装——见 afterInstallLaunched
             .setDestinationInExternalFilesDir(ctx, null, name)
         val id = dm.enqueue(req)
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
@@ -138,9 +139,32 @@ object AppUpdater {
     }.getOrDefault(false)
 
     /**
+     * 拉起安装器后立刻清理下载任务与记录：
+     * - remove 掉 DownloadManager 任务，系统「下载完成」通知随之消失，点通知再弹安装的循环被切断；
+     * - 清掉记录，避免下次进设置页 resumeDownload 又读到旧 SUCCESSFUL 任务重复弹安装。
+     * 注意：这里不删 cache/update.apk——安装器此刻可能正在读它，删了会装失败；
+     *       留到下次启动用 clearStaleApk 删（那时安装早已结束）。
+     */
+    fun afterInstallLaunched(ctx: Context, id: Long) {
+        runCatching {
+            (ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).remove(id)
+        }
+        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit().clear().apply()
+    }
+
+    /**
+     * 启动时清理上次遗留的 cache 安装包副本。
+     * 只删 cache/update.apk——私有目录那份由 DownloadManager 管理，afterInstallLaunched 里
+     * dm.remove(id) 会自动删除；且若存在「已下载未安装」的包，删了它 resumeDownload 就取不出来。
+     */
+    fun clearStaleApk(ctx: Context) {
+        runCatching { File(ctx.cacheDir, "update.apk").delete() }
+    }
+
+    /**
      * 恢复上次未走完的安装流程：查记录的下载任务状态——
      * 下载完成且比当前版本新 → 拷贝出 apk 返回 (版本, 文件)；
-     * 已装上或下载失败 → 清理残留（下载记录 + cache 里的 apk）返回 null。
+     * 已装上或下载失败 → 清理残留（下载记录 + 安装包）返回 null。
      */
     fun resumeDownload(ctx: Context, currentVer: String): Pair<String, File>? = runCatching {
         val pref = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
@@ -155,9 +179,9 @@ object AppUpdater {
             status == DownloadManager.STATUS_SUCCESSFUL && isNewer(ver, currentVer) ->
                 prepareInstall(ctx, id)?.let { ver to it }
             status == DownloadManager.STATUS_SUCCESSFUL || status == DownloadManager.STATUS_FAILED -> {
-                // 已经装上（手动装过）或下载失败：清理残留
-                pref.edit().clear().apply()
-                runCatching { File(ctx.cacheDir, "update.apk").delete() }
+                // 已经装上（手动装过）或下载失败：连同下载任务和通知一起清掉
+                afterInstallLaunched(ctx, id)
+                clearStaleApk(ctx)
                 null
             }
             else -> null // 还在下载中，不打扰

@@ -1,7 +1,7 @@
 {
-  "version": "0.8.34",
-  "code": 70,
-  "notes": "API Key 官网教程改为应用内浏览器打开，不再跳系统浏览器；网页可回退、完成后返回应用。",
-  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.34/yansui-ai-0.8.34-release.apk",
-  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.34/yansui-ai-0.8.34-release.apk"
+  "version": "0.8.35",
+  "code": 71,
+  "notes": "修复更新完成后反复弹安装：拉起安装器即移除下载任务与系统通知、清空记录，同一任务只弹一次；安装包下次启动自动清理。",
+  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.35/yansui-ai-0.8.35-release.apk",
+  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.35/yansui-ai-0.8.35-release.apk"
 }
