@@ -1,5 +1,16 @@
 # 言岁AI · 经验教训备忘
 
+## ⚠ 最高准则：这是手机 App，先用移动端视角审查，不要往电脑上偏（2026-11-28 用户明确要求）
+- 每次写/改/审查代码，第一步先问：手机进程随时会被冻结/杀（切后台、内存紧张、Doze、锁屏）、后台受限、网络会 WiFi↔流量切换、电量敏感、权限要运行时申请、屏幕小且触摸交互——桌面/网页里成立的做法在这里大多不成立
+- 凡是从桌面/JVM/网页搬来的写法，默认当成有嫌疑，逐条按上面的移动端约束过一遍，而不是等用户提醒
+- 高频踩坑点自查清单：
+  - 长任务（>10s）：必须前台服务，绝不能 goAsync/普通线程（goAsync 只有约 10 秒窗口）
+  - 文件落盘：必须原子写（.tmp + ATOMIC_MOVE），进程被杀不能留半截文件
+  - 读系统/外部状态的 UI（电池白名单/权限/Shizuku）：挂 lifecycle ON_RESUME tick，从系统页返回要自动刷新
+  - 网络：国内直连 GitHub 必失败，更新/技能下载走可用镜像 + 主源失败自动切备用
+  - 后台定时：AlarmManager setAndAllowWhileIdle + 前台服务，重启后重排
+- 用户反复强调过这条，说明之前的审查还不够自觉——以后动手前先按此清单过一遍再写代码
+
 ## 2026-11-27 设置页 Key 管理两坑（v0.8.21）
 - 密钥字段回显必须掩码：存储加密≠显示安全，截图/旁观即泄露；Field 加 masked 参数 + 显示/隐藏切换（Visibility 图标在 icons-extended，不想加依赖就用文字按钮）
 - 多厂商 Key 共存时，切换供应商必须同时换 key：`apiKey = engine.keyFor(providerKeyOf(url)) ?: ""`，否则上一家的 Key 会被保存到新厂商名下（错误绑定且实调会 401）
@@ -61,3 +72,9 @@
 - 清空长期记忆原无二次确认（不可恢复），补 AlertDialog 确认
 - SkillUpdater 的 BASE_MIRROR 从 ghproxy.net（实测不稳）统一改 gh-proxy.com
 - 规则：同一检查点文件不能被多个 AgentEngine 实例同时读写；孤儿 tool 清理必须按 tool_calls 数量计数，不能用布尔
+
+## 2026-11-28 移动端特有坑（v0.8.32）
+- 规则：审查 App 不能用桌面/网页思维——手机进程随时被系统冻结/杀（切后台/内存紧张/Doze），桌面开线程等几分钟没事，手机上必挂
+- 文件写入非原子：writeTextCompat 原直接 Files.write 覆盖，写一半被杀 → 半截 JSON，下次启动解析失败 → 会话/密钥/配置全丢。改为写唯一后缀 .tmp 再 ATOMIC_MOVE 覆盖（不支持则普通 move），一处改 core/NioCompat 全仓库受益
+- BroadcastReceiver.goAsync() 只有约 10 秒窗口，定时任务 result.get(6, MINUTES) 基本必被腰斩。改为前台服务 AgentTaskService（startForegroundService + 常驻通知），Manifest 加 FOREGROUND_SERVICE / FOREGROUND_SERVICE_DATA_SYNC 权限 + foregroundServiceType="dataSync"（Android 14+ 必须声明类型）；Receiver 只拉起服务
+- 移动端长任务（>10s）一律前台服务，不要 goAsync/普通线程

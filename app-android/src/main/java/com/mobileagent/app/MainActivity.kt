@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity() {
                 // 启动短动画：盖在最上层，播完淡出交棒（底层内容提前组合好，无白屏闪烁）
                 var showSplash by remember { mutableStateOf(true) }
                 // 无配置 → 四步引导（原型 onboarding）；已有配置 → 直接主框架
-                var configured by mutableStateOf(engine.config != null)
+                var configured by remember { mutableStateOf(engine.config != null) }
                 androidx.compose.foundation.layout.                Box {
                     if (configured) AppScaffold(engine) else OnboardingScreen(engine) { configured = true }
                     if (showSplash) SplashOverlay(onFinished = { showSplash = false })

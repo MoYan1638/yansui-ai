@@ -455,7 +455,7 @@ class AgentEngine(
                                 }
                         }.trim()
                     )
-                }.toList()
+                }.collect(java.util.stream.Collectors.toList())
         }
     }.getOrDefault(emptyList())
 
@@ -617,7 +617,7 @@ class AgentEngine(
         runCatching { Files.deleteIfExists(streamPath) }
         runCatching {
             if (Files.exists(sessionsDir)) {
-                val files = Files.list(sessionsDir).use { s -> s.toList() }
+                val files = Files.list(sessionsDir).use { s -> s.collect(java.util.stream.Collectors.toList()) }
                 files.forEach { Files.deleteIfExists(it) }
             }
         }

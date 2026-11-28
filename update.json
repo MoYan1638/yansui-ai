@@ -1,7 +1,7 @@
 {
-  "version": "0.8.32",
-  "code": 68,
-  "notes": "移动端加固：文件改为原子写（进程被杀不再写坏会话/密钥）；定时主动任务改前台服务保活，后台不再被系统冻结腰斩。",
-  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.32/yansui-ai-0.8.32-release.apk",
-  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.32/yansui-ai-0.8.32-release.apk"
+  "version": "0.8.33",
+  "code": 69,
+  "notes": "发布前排查：修复历史列表/清空对话在 Android 8-13 的 toList 崩溃；修复引导页状态重组丢失；修复前台服务在 Android 12+/14+ 的启动限制崩溃（白名单豁免+兜底+类型签名）。",
+  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.33/yansui-ai-0.8.33-release.apk",
+  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.33/yansui-ai-0.8.33-release.apk"
 }

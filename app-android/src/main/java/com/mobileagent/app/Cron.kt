@@ -136,10 +136,34 @@ class CronTaskReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getStringExtra(CronScheduler.EXTRA_TASK_ID) ?: return
-        // 手机切后台会冻结/杀进程：goAsync 只有约 10 秒窗口，撑不住 Agent 的多轮任务。
-        // 改由前台服务保活执行（常驻通知，系统不杀），Receiver 只负责拉起。
-        val svc = Intent(context, AgentTaskService::class.java).putExtra(CronScheduler.EXTRA_TASK_ID, id)
-        androidx.core.content.ContextCompat.startForegroundService(context, svc)
+        // 手机切后台会冻结/杀进程：goAsync 只有约 10 秒窗口，撑不住 Agent 多轮任务。
+        // 首选前台服务保活（常驻通知，系统不杀）。但 Android 12+ 后台启动前台服务有限制：
+        // 用户关了电池优化（白名单）属豁免可启动；否则用 goAsync 尽力跑短任务。
+        // 无论哪条路都 try-catch 兜住，绝不让系统限制抛的异常把进程崩掉。
+        val inWhitelist = try {
+            (context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager)
+                ?.isIgnoringBatteryOptimizations(context.packageName) == true
+        } catch (e: Exception) { false }
+
+        if (Build.VERSION.SDK_INT < 31 || inWhitelist) {
+            try {
+                val svc = Intent(context, AgentTaskService::class.java)
+                    .putExtra(CronScheduler.EXTRA_TASK_ID, id)
+                androidx.core.content.ContextCompat.startForegroundService(context, svc)
+                return
+            } catch (e: Exception) {
+                // 前台服务启动被系统拒（含 ForegroundServiceStartNotAllowedException）：降级
+            }
+        }
+        // 兜底：前台服务不可用时的尽力执行（未加白名单时系统可能冻结，短任务或可完成）
+        val pending = goAsync()
+        Thread {
+            try {
+                AgentTaskService.executeTask(context, id)
+            } finally {
+                pending.finish()
+            }
+        }.start()
     }
 
 }

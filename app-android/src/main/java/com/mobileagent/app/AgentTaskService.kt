@@ -28,37 +28,17 @@ class AgentTaskService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
-        // Android 要求前台服务启动后立即（数秒内）调用 startForeground
-        startForeground(NOTIF_ID, runningNotification())
+        // Android 要求前台服务启动后立即（数秒内）调用 startForeground。
+        // Android 14+(API 34) 若 Manifest 声明了 foregroundServiceType，必须用带 type 的签名，
+        // 否则抛 MissingForegroundServiceTypeException；用兼容层统一处理。
+        androidx.core.app.ServiceCompat.startForeground(
+            this, NOTIF_ID, runningNotification(),
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        )
 
         Thread {
-            try {
-                val task = CronStore.all(this).firstOrNull { it.id == id }
-                if (task == null) {
-                    stopSelf(startId)
-                    return@Thread
-                }
-                // 独立引擎 + 临时上下文：不读写用户对话检查点，避免与 UI 会话互相覆盖
-                val engine = AgentEngine(this, ephemeralHistory = true)
-                engine.initialize()
-                val result = CompletableFuture<String>()
-                engine.send(
-                    input = task.prompt,
-                    onToolStart = { _, _ -> },
-                    onToolCall = { _, _, _ -> },
-                    onDone = { reply, _, _, _ -> result.complete(reply) },
-                    onFailed = { msg -> result.complete("任务失败：$msg") }
-                )
-                val reply = result.get(10, TimeUnit.MINUTES)
-                CronStore.updateResult(this, id, reply)
-                notifyTaskResult(this, "● Agent 任务完成：${task.prompt.take(20)}", reply)
-                if (task.repeat) CronScheduler.scheduleNext(this, task)
-                else CronStore.remove(this, id) // 单次任务跑完即清
-            } catch (e: Exception) {
-                notifyTaskResult(this, "● Agent 任务失败：${id.take(8)}", e.message ?: e.javaClass.simpleName)
-            } finally {
-                stopSelf(startId)
-            }
+            executeTask(this, id)
+            stopSelf(startId)
         }.start()
         return START_NOT_STICKY
     }
@@ -80,6 +60,33 @@ class AgentTaskService : Service() {
     companion object {
         private const val CHANNEL_RUNNING = "agent_task_running"
         private const val NOTIF_ID = 2026
+
+        /**
+         * 执行任务本体：前台服务路径和 goAsync 兜底路径共用。
+         * 独立引擎 + 临时上下文，不读写用户对话检查点，避免与 UI 会话互相覆盖。
+         */
+        fun executeTask(context: Context, id: String) {
+            try {
+                val task = CronStore.all(context).firstOrNull { it.id == id } ?: return
+                val engine = AgentEngine(context, ephemeralHistory = true)
+                engine.initialize()
+                val result = CompletableFuture<String>()
+                engine.send(
+                    input = task.prompt,
+                    onToolStart = { _, _ -> },
+                    onToolCall = { _, _, _ -> },
+                    onDone = { reply, _, _, _ -> result.complete(reply) },
+                    onFailed = { msg -> result.complete("任务失败：$msg") }
+                )
+                val reply = result.get(10, TimeUnit.MINUTES)
+                CronStore.updateResult(context, id, reply)
+                notifyTaskResult(context, "● Agent 任务完成：${task.prompt.take(20)}", reply)
+                if (task.repeat) CronScheduler.scheduleNext(context, task)
+                else CronStore.remove(context, id) // 单次任务跑完即清
+            } catch (e: Exception) {
+                notifyTaskResult(context, "● Agent 任务失败：${id.take(8)}", e.message ?: e.javaClass.simpleName)
+            }
+        }
 
         /** 任务结果通知：从 Receiver 搬来，前台服务和旧路径共用 */
         fun notifyTaskResult(context: Context, title: String, text: String) {
