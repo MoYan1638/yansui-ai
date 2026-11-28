@@ -1231,6 +1231,35 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
     var customTick by remember { mutableIntStateOf(0) } // 自定义供应商增删后重建供应商片
     var confirmDelCustom by remember { mutableStateOf<String?>(null) } // 待删除的自定义供应商 baseUrl
 
+    // 数据备份/恢复（导出明文 Key 随包走，换机可恢复；UI 提示妥善保管）
+    val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    var backupMsg by remember { mutableStateOf("") }
+    var confirmRestore by remember { mutableStateOf(false) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        backupMsg = "正在导出…"
+        Thread {
+            val r = BackupManager.export(ctx, engine.root, uri)
+            mainHandler.post { backupMsg = r.message }
+        }.start()
+    }
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        backupMsg = "正在恢复…"
+        Thread {
+            val r = BackupManager.import(ctx, engine.root, uri)
+            mainHandler.post {
+                backupMsg = r.message
+                // 恢复后磁盘数据变了，但引擎内存还是旧的——重建 Activity 让全新引擎从盘重载
+                if (r.ok) (ctx as? android.app.Activity)?.recreate()
+            }
+        }.start()
+    }
+
     // Shizuku（可选能力，只建议不强制）
     var shizukuTick by remember { mutableIntStateOf(0) }
 
@@ -1658,6 +1687,57 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                 )
                 }
 
+                SectionLabel("数据备份")
+                SettingsCard {
+                    Text(
+                        "导出一个备份文件，换机或重装后恢复对话、记忆、人设与设置。备份含明文 API Key，请只存在自己的设备里、不要外传。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                val name = "言岁AI备份-" + java.text.SimpleDateFormat(
+                                    "yyyyMMdd-HHmm", java.util.Locale.US
+                                ).format(java.util.Date()) + ".zip"
+                                exportLauncher.launch(name)
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        ) { Text("导出备份") }
+                        OutlinedButton(
+                            onClick = { confirmRestore = true },
+                            shape = RoundedCornerShape(8.dp)
+                        ) { Text("从备份恢复") }
+                    }
+                    if (backupMsg.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(backupMsg, style = MonoStyle, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                if (confirmRestore) {
+                    AlertDialog(
+                        onDismissRequest = { confirmRestore = false },
+                        title = { Text("从备份恢复？") },
+                        text = {
+                            Text(
+                                "当前对话、记忆、人设与设置会被备份文件覆盖，且不可撤销。确认已选对备份文件。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                confirmRestore = false
+                                restoreLauncher.launch("*/*")
+                            }) { Text("选择备份文件", color = MaterialTheme.colorScheme.error) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmRestore = false }) { Text("取消") }
+                        }
+                    )
+                }
+
                 SectionLabel("人设与记忆")
                 SettingsCard {
                 var editPersona by remember { mutableStateOf(false) }
@@ -1665,7 +1745,6 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                 var distilling by remember { mutableStateOf(false) }
                 var distillResult by remember { mutableStateOf<Pair<String, String>?>(null) }
                 var distillError by remember { mutableStateOf<String?>(null) }
-                val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically

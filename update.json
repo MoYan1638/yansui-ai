@@ -1,7 +1,7 @@
 {
-  "version": "0.8.38",
-  "code": 74,
-  "notes": "自定义 API 升级为可管理的供应商：保存后成为可选片、切走回来自动回显、片旁可删除（连同其 Key）；不再一保存就找不到。",
-  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.38/yansui-ai-0.8.38-release.apk",
-  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.38/yansui-ai-0.8.38-release.apk"
+  "version": "0.8.39",
+  "code": 75,
+  "notes": "新增数据备份/恢复：一键导出备份文件（含对话、记忆、人设、供应商与设置），换机或重装后恢复。API Key 导出为明文随包走以保证跨设备可用，恢复时用本机 Keystore 重新加密。",
+  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.39/yansui-ai-0.8.39-release.apk",
+  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.39/yansui-ai-0.8.39-release.apk"
 }
