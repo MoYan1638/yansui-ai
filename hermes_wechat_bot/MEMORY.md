@@ -1,5 +1,11 @@
 # 言岁AI · 经验教训备忘
 
+## 2026-11-28 空 Key 支持免鉴权接口（v0.8.40，用户指出）
+- 之前处处强制 Key 非空才能保存——但本地模型（Ollama/LM Studio）、免鉴权代理根本没有 Key。校验只能卡"必填项"（URL/MODEL），Key 应可选
+- 空 Key 的语义 = "该接口无需密钥"：setProviderKey 空 → remove 该厂商记录；saveConfig 空 Key 不走 Keystore 加密（不造空密文）；providerKeys 同步 remove，keyFor 回显空
+- 卡空 Key 的点共 5 处，改漏一处用户照样被挡：设置页保存校验、引导页下一步+测试连接按钮 enabled、自定义模型弹窗 enabled、引擎 setProviderKey。改这类校验要 grep isNotBlank/isBlank 全查
+- 预设（内置云厂商）切模型仍要求 Key（switchModel 空返回 false 弹补填框），这个保留——云厂商确实需要；放开的是自定义/三行式入口
+
 ## 2026-11-28 数据备份/恢复（v0.8.39）
 - 备份跨设备可用的关键：API Key 用 Android Keystore 加密，密钥绑设备/签名，密文换机后解不开。导出时必须把 Key 解密成明文随包走，恢复时用本机 Keystore 重新加密落盘（config.json 的 apiKey + keys.json 的全部 value）
 - 明文 Key 进备份文件 → UI 必须明确提示"含明文 API Key、只存自己设备、不要外传"，这是安全取舍不是疏漏
