@@ -111,3 +111,11 @@
 - 根因：providers 列表里自定义项的值是 ("" to "")，点击处理写成 `if (pair.first.isNotBlank())` 才切换，空地址被跳过；选中态 `sel = pair.first == baseUrl` 也让自定义地址永远不高亮
 - 修复：区分 isCustom(pair.first.isBlank())，自定义点击→清空 baseUrl/model/apiKey 供手填，其余照旧切换；sel 用 usingBuiltIn 反推，地址不在内置厂商里就高亮自定义片
 - 规则：列表里用「空值」当特殊项标识时，凡是 if(isNotBlank) 之类的守卫都会误杀它，特殊项必须单独分支处理
+
+## 2026-11-28 自定义 API 持久化为可选供应商（v0.8.38）
+- 需求：自定义 API 保存后应成为可选供应商片，切走回来能回显，可删除；不能"一保存就找不到"
+- 实现：AgentEngine 新增 custom-providers.json（data/ 下），存 CustomProvider(name,baseUrl,model) 列表；Key 仍复用 keys.json 按 providerKeyOf(baseUrl) 加密存
+  - upsertCustomProvider 按 baseUrl 归一去重；removeCustomProvider 同时删记录+删 Key+saveKeys
+  - initialize 里 loadCustomProviders（ephemeral 跳过）
+- UI：providers 列表 = 内置预设 + openai + 已存自定义 + 「自定义…」新增入口；用 customTick 状态在增删后重建；自定义片旁加 × 删除按钮 + 确认弹窗（删当前使用地址则回退默认 DeepSeek）；builtinUrls 集合判断保存时是否登记为自定义
+- 规则：用户"新增的配置项"必须持久化并出现在可选列表里，不能只写当前配置就丢；删除配置要连带清理其关联数据（Key）
