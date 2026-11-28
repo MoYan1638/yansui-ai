@@ -1431,8 +1431,11 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
+                    // 当前地址是否属于某个内置厂商；不属于时高亮「自定义…」片
+                    val usingBuiltIn = providers.any { it.first.isNotBlank() && it.second.first == baseUrl }
                     providers.forEach { (name, pair) ->
-                        val sel = pair.first == baseUrl
+                        val isCustom = pair.first.isBlank()
+                        val sel = if (isCustom) !usingBuiltIn else pair.first == baseUrl
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = if (sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
@@ -1442,12 +1445,15 @@ fun SettingsScreen(engine: AgentEngine, bottomInset: Dp = 0.dp) {
                                 if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                             ),
                             modifier = Modifier.clickable {
-                                if (pair.first.isNotBlank()) {
+                                if (isCustom) {
+                                    // 自定义：清空三行让用户填自己的 OpenAI 兼容接口
+                                    baseUrl = ""; model = ""; apiKey = ""
+                                } else {
                                     baseUrl = pair.first; model = pair.second
                                     apiKey = engine.keyFor(providerKeyOf(pair.first)) ?: ""
-                                    savedTip = false
-                                    error = null
                                 }
+                                savedTip = false
+                                error = null
                             }
                         ) {
                             Text(

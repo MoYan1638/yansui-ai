@@ -1,7 +1,7 @@
 {
-  "version": "0.8.36",
-  "code": 72,
-  "notes": "根治更新后反复弹安装：应用启动即清理全部历史遗留的下载任务与通知（点通知会重开安装器的根源），安装包一并删除；未安装的新包保留。",
-  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.36/yansui-ai-0.8.36-release.apk",
-  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.36/yansui-ai-0.8.36-release.apk"
+  "version": "0.8.37",
+  "code": 73,
+  "notes": "修复供应商「自定义…」片点击无反应：原先自定义项地址为空被判断跳过，现点它清空三行供手动填写，且自定义地址会正确高亮。",
+  "apk": "https://gh-proxy.com/https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.37/yansui-ai-0.8.37-release.apk",
+  "apk_mirror": "https://github.com/MoYan1638/yansui-ai/releases/download/v0.8.37/yansui-ai-0.8.37-release.apk"
 }

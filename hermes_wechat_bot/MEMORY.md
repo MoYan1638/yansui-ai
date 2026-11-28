@@ -100,3 +100,8 @@
 - 根因：下载任务成功后从没 dm.remove(id)，DownloadManager 的通知常驻且点通知会重发完成广播；resumeDownload 进设置页又读到同一个 SUCCESSFUL 旧记录重复拉起；autoInstall 无去重
 - 修复：①新增 AppUpdater.afterInstallLaunched(ctx,id)=dm.remove(任务,通知随之消失)+清 pref；②Screens 加 autoInstall(f,id) 用 autoInstalledId 去重，三处自动拉起(广播/轮询/resume)统一走它；③手动「立即安装」按钮拉起后也调 afterInstallLaunched；④clearStaleApk 只删 cache/update.apk（私有目录那份由 dm.remove 删，不能手动删否则已下载未安装的包会被毁）
 - 时序坑：cache/update.apk 不能拉起安装器当场删——安装器此刻可能还在读；留到下次进设置页 clearStaleApk 删
+
+## 2026-11-28 弹安装的真正根源：历史通知堆积（v0.8.36，0.8.35 修复不彻底的补刀）
+- 用户反馈装好后打开 App 仍弹安装。0.8.35 只清了「当前记录的那一个任务」，但 0.8.30~0.8.34 每次成功下载都留一条 DownloadManager 完成通知 + 任务，通知栏积了好几条，点任何一条都会打开对应 apk 重弹安装器；且清理逻辑只在进设置页触发，主界面根本跑不到
+- 根治：MainActivity.onCreate 即调 AppUpdater.clearFinishedTasks(ctx, currentVer)——query 本应用全部下载任务（DownloadManager.query 天然只返回本 uid 的任务），从 COLUMN_TITLE 解析版本号（yansui-ai-x.y.z-release.apk），<= 当前版本或 FAILED 的 dm.remove（删任务+通知+安装包），> 当前版本的保留给 resumeDownload 弹安装
+- 规则：**DownloadManager 任务完成通知的生命周期 = 任务本身**，remove 是唯一清理方式；凡是往通知栏发持久通知的组件（DownloadManager 等），清理必须放在「应用启动」而非「某个页面进入时」
